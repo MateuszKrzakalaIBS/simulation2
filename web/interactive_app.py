@@ -100,49 +100,31 @@ def main():
     )
     
     st.title("Simplified Demographic Counterfactual Simulation")
-    # st.write(""" # Original brief write, replaced by detailed explanation below
-    # This tool allows you to run demographic simulations and view summary statistics.
-    # Configure your simulation parameters in the sidebar and run the analysis.
-    # """)
+    # Removed commented out st.write
 
     with st.expander("About this Simulation Tool", expanded=True):
         st.markdown("""
             ### Welcome to the Demographic Counterfactual Simulation Tool!
 
-            This application allows you to explore the potential impacts of various demographic scenarios (or 'shocks') 
-            on a range of population variables. It performs a counterfactual analysis, comparing a baseline scenario 
-            (without the shock) to an alternative scenario (with the shock applied).
-
-            **Core Logic:**
-            1.  **Baseline Calculation**: The simulation first establishes a baseline for each variable based on the input data.
-            2.  **Shock Application**: You can define a 'shock' through the parameters in the sidebar (s1, s2, s3 changes). These shocks modify underlying factors that influence the variables.
-            3.  **Alternative Scenario Calculation**: The simulation recalculates the variables under this new shocked condition.
-            4.  **Impact Assessment**: Finally, it compares the results from the baseline and alternative scenarios to quantify the impact of the shock, showing absolute and relative changes.
+            This application runs demographic counterfactual analyses. It compares a baseline scenario 
+            to an alternative scenario where a defined 'shock' is applied, allowing you to assess the impact on various population variables.
         """)
 
     with st.expander("Understanding the Input and Output Files"):
         st.markdown("""
             #### Input File (`Input.xlsx` by default)
-            This Excel file is the primary source of data for the simulation. It typically contains:
-            *   **Population Data**: Baseline demographic data, often broken down by age, sex, and other relevant categories.
-            *   **Variable Parameters**: Coefficients, base rates, and other parameters that define how each variable is calculated and how it responds to demographic factors and shocks.
-            *   **Scenario Definitions**: May contain predefined scenarios or parameters used by the simulation engine.
-            *   **Sheet Structure**: The simulation expects specific sheet names and column headers. Refer to the simulation's documentation or `simulation2.py` for the exact structure required.
+            The primary source of data, containing baseline population data, variable parameters, and scenario definitions. The simulation expects specific sheet names and column structures.
+            *   **Key Content**: Demographic data (age, sex), parameters for variable calculation.
+            *   **`data_2012` sheet**: Used for the "Use 2012 Values" scenario.
+            *   **`parameters` sheet**: Can define `friendly_name` and `variable_type` for dynamic loading in the simulation.
 
             #### Output File (`Output.xlsx` by default)
-            This file stores the **summary results** of the simulation. For each variable analyzed, it typically includes:
-            *   `variable`: The name of the variable.
-            *   `result_bs`: The aggregated result for the variable in the baseline scenario.
-            *   `result_as`: The aggregated result for the variable in the alternative (shocked) scenario.
-            *   `absolute_change`: The difference between `result_as` and `result_bs`.
-            *   `relative_change_pct`: The percentage change from baseline to alternative.
-            *   Other aggregated metrics depending on the variable type (e.g., total employed, total affected population).
+            Stores summary results, showing aggregated impacts for each variable (baseline vs. alternative, absolute/relative changes).
+            *   **Key Content**: `variable`, `result_bs`, `result_as`, `absolute_change`, `relative_change_pct`.
 
             #### Detailed Output File (`DetailedOutput.xlsx` by default)
-            This file provides more granular results. It often contains:
-            *   **A summary sheet**: Similar to `Output.xlsx`.
-            *   **Individual Variable Sheets**: For each key variable, a separate sheet showing results disaggregated by demographic groups (e.g., age and sex). This allows for a deeper understanding of how the shock impacts different segments of the population.
-            *   Columns in these sheets might include `age`, `sex`, `population`, `result_bs` (for that group), `result_as` (for that group), `difference`, `difference_pct`, and contribution metrics.
+            Provides granular results, often with separate sheets for variables, disaggregated by demographic groups (e.g., age, sex).
+            *   **Key Content**: Disaggregated `result_bs`, `result_as`, `difference` by demographic groups.
         """)
 
     config = load_config()
@@ -153,8 +135,61 @@ def main():
         
         st.subheader("Files")
         st.markdown("Specify the Excel files for input and output. Ensure `Input.xlsx` is formatted correctly.")
-        input_file = st.text_input("Input Excel File", 
-                                  value=config.get("simulation", {}).get("input_file", "Input.xlsx"))
+        
+        # --- START NEW INPUT FILE HANDLING ---
+        # Get the initial input file path from config (could be absolute or basename)
+        config_input_file_path = config.get("simulation", {}).get("input_file", "Input.xlsx")
+        
+        uploaded_file = st.file_uploader(
+            "Upload Custom Input.xlsx (Optional)",
+            type=["xlsx"],
+            help="If you upload a file, it will be used instead of the one specified in the text field below. The uploaded file will be named 'uploaded_input.xlsx' in the simulation's root directory."
+        )
+
+        # This variable will hold the path/name that config should use for the input file.
+        # It's an absolute path for successful uploads, otherwise a basename from text_input/config.
+        input_file_for_config = config_input_file_path 
+        # This is what the text_input box will display.
+        display_filename_in_text_box = os.path.basename(config_input_file_path)
+        # Controls if the text_input box is editable.
+        input_text_field_is_disabled = False
+
+        if uploaded_file is not None:
+            # parent_dir is defined globally: os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            temp_uploaded_file_path = os.path.join(parent_dir, "uploaded_input.xlsx")
+            try:
+                with open(temp_uploaded_file_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                input_file_for_config = temp_uploaded_file_path # Use absolute path for the simulation
+                display_filename_in_text_box = "uploaded_input.xlsx (using uploaded file)"
+                input_text_field_is_disabled = True # Disable text field as upload takes precedence
+                st.sidebar.success(f"Using uploaded file: {os.path.basename(temp_uploaded_file_path)}")
+            except Exception as e:
+                st.sidebar.error(f"Error saving uploaded file: {e}. Using file from text input or config.")
+                # Fallback: input_file_for_config remains as config_input_file_path (original or default)
+                # display_filename_in_text_box remains os.path.basename(config_input_file_path)
+                # input_text_field_is_disabled remains False
+        
+        # Text input for input file:
+        # - If upload succeeded, it's disabled and shows "uploaded_input.xlsx (...)" 
+        # - If no upload or upload failed, it's enabled and shows the current config/default filename, and is editable.
+        input_file_from_text_field = st.text_input(
+            "Input Excel File",
+            value=display_filename_in_text_box,
+            help="Name of the Input Excel file. If not an uploaded file, it's relative to the simulation's root directory.",
+            disabled=input_text_field_is_disabled
+        )
+
+        # Determine the final input_file value for the config dictionary:
+        if uploaded_file is not None and input_file_for_config.endswith("uploaded_input.xlsx"):
+            # If upload was successful and processed, config uses the absolute path to the uploaded file.
+            config["simulation"]["input_file"] = input_file_for_config
+        else:
+            # No upload, or upload failed: use the value from the (potentially user-edited) text field.
+            # This value is expected to be a basename or a relative path that resolve_path can handle.
+            config["simulation"]["input_file"] = input_file_from_text_field
+        # --- END NEW INPUT FILE HANDLING ---
+
         output_file = st.text_input("Output Excel File", 
                                    value=config.get("simulation", {}).get("output_file", "Output.xlsx"))
         detailed_output_file = st.text_input("Detailed Output Excel File", 
@@ -251,7 +286,7 @@ def main():
             config["simulation"].setdefault("shock_scenario", default_sim_config["shock_scenario"].copy())
             config["simulation"].setdefault("variables_to_exclude", default_sim_config["variables_to_exclude"][:])
 
-        config["simulation"]["input_file"] = input_file
+        # config["simulation"]["input_file"] = input_file # This line is removed/obsolete; handled by the new logic above.
         config["simulation"]["output_file"] = output_file
         config["simulation"]["detailed_output_file"] = detailed_output_file
         
@@ -320,106 +355,97 @@ def main():
         else:
             st.info("Simulation ran, but no summary data was returned or an error occurred.")
 
-    st.markdown("---") # Visual separator
-    st.header("About the Simulation and Files")
+        # Section for downloading and previewing output files
+        st.markdown("---")
+        st.header("Download and Preview Output Files")
 
-    with st.expander("Simulation Logic and Process"):
-        st.markdown("""
-        **Purpose:**
-        This simulation tool is designed to model and analyze the impact of hypothetical demographic shocks on various socio-economic outcome variables. It allows users to define a "shock scenario" by altering key parameters (s1, s2, s3) and observe the resulting changes.
+        output_file_config_key = "output_file"
+        detailed_output_config_key = "detailed_output_file"
 
-        **Core Logic:**
-        1.  **Baseline Data:** The simulation starts by loading baseline data and parameters from the `Input.xlsx` file. This file establishes the initial state of the demographic and economic environment.
-        2.  **Shock Application:** Users define a shock scenario through the sidebar by specifying percentage changes to three core parameters: `s1_change`, `s2_change`, and `s3_change`. These parameters are abstract and their specific meaning (e.g., change in fertility rates, migration, labor force participation) depends on the underlying model structure defined in `simulation2.py`.
-        3.  **Recalculation:** The simulation engine (`simulation2.py`) takes these shock parameters and recalculates all dependent outcome variables. The exact formulas and relationships are embedded within the `simulation2.py` script.
-        4.  **Comparison:** The core of the analysis involves comparing the outcome variables from the "after shock" scenario to the "baseline" scenario.
-        5.  **Output Generation:** The simulation produces:
-            *   A summary of key changes, displayed directly in this web application.
-            *   An `Output.xlsx` file containing these summary statistics.
-            *   A `DetailedOutput.xlsx` file providing more granular, disaggregated results for in-depth analysis.
+        # Get base filenames for display, handle potential None or empty strings
+        raw_output_filename = config.get("simulation", {}).get(output_file_config_key, "Output.xlsx")
+        output_filename = os.path.basename(raw_output_filename) if raw_output_filename else "Output.xlsx"
+        
+        raw_detailed_output_filename = config.get("simulation", {}).get(detailed_output_config_key, "DetailedOutput.xlsx")
+        detailed_output_filename = os.path.basename(raw_detailed_output_filename) if raw_detailed_output_filename else "DetailedOutput.xlsx"
 
-        **Generation Process:**
-        *   The simulation is executed by the `simulation2.run_simulation()` function, which is part of the `simulation2.py` script located in the parent directory of this web application.
-        *   This function processes the configurations set in the sidebar (file paths, shock values, variable exclusions) to perform its calculations.
-        """)
+        output_file_path = resolve_path(raw_output_filename)
+        detailed_output_file_path = resolve_path(raw_detailed_output_filename)
+        
+        output_exists = os.path.exists(output_file_path)
+        detailed_output_exists = os.path.exists(detailed_output_file_path)
 
-    with st.expander("Input File: Input.xlsx"):
-        st.markdown("""
-        **Purpose:**
-        The `Input.xlsx` file is the primary source of data for the simulation. It contains all the baseline figures, parameters, and coefficients required to define the initial state of the model before any shocks are applied.
+        tabs_to_create = []
+        if output_exists:
+            tabs_to_create.append(f"Output File (`{output_filename}`)")
+        if detailed_output_exists:
+            tabs_to_create.append(f"Detailed Output File (`{detailed_output_filename}`)")
 
-        **Structure:**
-        *   It is an Excel workbook, typically containing multiple sheets.
-        *   Each sheet usually represents a different category of data, such as:
-            *   Demographic cohorts and their characteristics.
-            *   Baseline values for various outcome variables (e.g., health indicators, economic metrics).
-            *   Model parameters and coefficients that might be affected by the s1, s2, s3 shocks.
-            *   Lookup tables or assumptions used in the simulation's calculations.
+        if not tabs_to_create:
+            st.info("Run the simulation to generate output files. If files were generated, ensure paths in the sidebar are correct.")
+        else:
+            tabs = st.tabs(tabs_to_create)
+            tab_idx = 0
 
-        **Content Example (Illustrative):**
-        *   A sheet named 'Demographics' might have age groups, population counts, and baseline fertility/mortality rates.
-        *   A sheet named 'LaborMarket' could contain employment rates, wages, and participation rates by demographic group.
-        *   A sheet named 'HealthIndicators' might list prevalence rates for certain conditions.
-        *   A sheet named 'Parameters' could define how s1, s2, and s3 relate to specific model inputs.
+            if output_exists:
+                with tabs[tab_idx]:
+                    st.subheader(f"Manage: `{output_filename}`")
+                    try:
+                        with open(output_file_path, "rb") as fp:
+                            st.download_button(
+                                label=f"Download `{output_filename}`",
+                                data=fp,
+                                file_name=output_filename,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
+                        
+                        st.markdown("#### Preview Content (first 5 rows of selected sheet)")
+                        xls_output = pd.ExcelFile(output_file_path)
+                        sheet_names_output = xls_output.sheet_names
+                        if sheet_names_output:
+                            selected_sheet_output = st.selectbox(
+                                "Select a sheet to preview", 
+                                sheet_names_output, 
+                                key="output_sheet_select" # Unique key
+                            )
+                            if selected_sheet_output:
+                                df_preview_output = xls_output.parse(selected_sheet_output)
+                                st.dataframe(df_preview_output.head(), use_container_width=True)
+                        else:
+                            st.warning(f"`{output_filename}` contains no sheets or is not a valid Excel file.")
+                    except Exception as e:
+                        st.error(f"Error processing `{output_filename}`: {e}")
+                tab_idx += 1
 
-        **Usage:**
-        The `simulation2.py` script reads this file at the beginning of each simulation run to establish the "before shock" scenario. The accuracy and completeness of this file are crucial for meaningful simulation results. The default path is relative to the main simulation directory.
-        """)
-
-    with st.expander("Output File: Output.xlsx"):
-        st.markdown("""
-        **Purpose:**
-        The `Output.xlsx` file stores the main summary results of the simulation run. It provides a high-level overview of the impacts of the applied shock scenario.
-
-        **Structure:**
-        *   An Excel workbook.
-        *   Typically contains one or more sheets presenting aggregated results.
-        *   The primary content is often a table similar to the "Simulation Summary Statistics" displayed in this web app.
-
-        **Content Example:**
-        *   A sheet named 'SummaryResults' might show:
-            *   Baseline values for key indicators.
-            *   Values for these indicators after the shock.
-            *   Absolute and percentage changes.
-            *   Aggregated impacts across different demographic groups or regions.
-
-        **Generation:**
-        This file is generated by `simulation2.py` at the end of a successful simulation. It reflects the `summary_df` (summary DataFrame) returned by the simulation logic. The default path is relative to the main simulation directory.
-        """)
-
-    with st.expander("Detailed Output File: DetailedOutput.xlsx"):
-        st.markdown("""
-        **Purpose:**
-        The `DetailedOutput.xlsx` file provides more granular and disaggregated results from the simulation. It is intended for users who need to perform a deeper dive into the specific changes across various dimensions.
-
-        **Structure:**
-        *   An Excel workbook, often containing multiple sheets.
-        *   Each sheet might correspond to a specific outcome variable, demographic segment, or intermediate calculation step.
-
-        **Content Example:**
-        *   If the simulation models multiple health conditions, there might be separate sheets for each condition showing changes by age, gender, etc.
-        *   Sheets could contain time-series data if the model projects outcomes over several periods (though the current app focuses on a single shock event).
-        *   Breakdowns of how the s1, s2, s3 shocks propagated through different parts of the model.
-
-        **Generation:**
-        This file is also generated by `simulation2.py`. It corresponds to the `detailed_df_dict` (dictionary of detailed DataFrames) returned by the simulation logic, where dictionary keys often become sheet names. The default path is relative to the main simulation directory.
-        """)
-
-    with st.expander("Using the Sidebar Configuration"):
-        st.markdown("""
-        The sidebar on the left allows you to customize the simulation:
-
-        *   **Files:**
-            *   `Input Excel File`: Specify the name of your input data file (e.g., `Input.xlsx`). The application expects this file to be in the main simulation directory.
-            *   `Output Excel File`: Define the name for the summary output Excel file (e.g., `Output.xlsx`).
-            *   `Detailed Output Excel File`: Define the name for the detailed output Excel file (e.g., `DetailedOutput.xlsx`).
-        *   **Shock Scenario:**
-            *   Adjust the sliders for `s1 Change`, `s2 Change`, and `s3 Change`. These represent percentage point changes (e.g., a value of 0.1 means a +10% change, -0.05 means a -5% change) to the respective underlying parameters in the simulation model.
-        *   **Variable Exclusions:**
-            *   `Variables to Exclude`: Enter a comma-separated list of variable names that you want the simulation to ignore or not process. This can be useful for sensitivity analysis or focusing on specific parts of the model.
-
-        Click the "Run Simulation" button after setting your desired configurations. The results (summary statistics) will be displayed on this page, and the configured Excel files will be generated/updated in the main simulation directory.
-        """)
+            if detailed_output_exists:
+                with tabs[tab_idx]:
+                    st.subheader(f"Manage: `{detailed_output_filename}`")
+                    try:
+                        with open(detailed_output_file_path, "rb") as fp:
+                            st.download_button(
+                                label=f"Download `{detailed_output_filename}`",
+                                data=fp,
+                                file_name=detailed_output_filename,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                            )
+                        
+                        st.markdown("#### Preview Content (first 5 rows of selected sheet)")
+                        xls_detailed = pd.ExcelFile(detailed_output_file_path)
+                        sheet_names_detailed = xls_detailed.sheet_names
+                        if sheet_names_detailed:
+                            selected_sheet_detailed = st.selectbox(
+                                "Select a sheet to preview", 
+                                sheet_names_detailed, 
+                                key="detailed_sheet_select" # Unique key
+                            )
+                            if selected_sheet_detailed:
+                                df_preview_detailed = xls_detailed.parse(selected_sheet_detailed)
+                                st.dataframe(df_preview_detailed.head(), use_container_width=True)
+                        else:
+                            st.warning(f"`{detailed_output_filename}` contains no sheets or is not a valid Excel file.")
+                    except Exception as e:
+                        st.error(f"Error processing `{detailed_output_filename}`: {e}")
+                # tab_idx += 1 # Not needed for the last possible tab
 
 if __name__ == "__main__":
     main()
