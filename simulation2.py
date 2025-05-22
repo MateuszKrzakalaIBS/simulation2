@@ -49,9 +49,11 @@ def load_config(config_path="config.json"):
                     "output_file": "Output.xlsx",
                     "detailed_output_file": "DetailedOutput.xlsx",
                     "shock_scenario": {
+                        "scenario_type": "Percentage Change", # Added default
                         "s1_change": -0.1,
                         "s2_change": 0.1,
-                        "s3_change": 0.0
+                        "s3_change": 0.0,
+                        "s1_reallocation_percentage": 0.5 # Added default
                     },
                     "variables_to_exclude": []
                 }
@@ -64,9 +66,11 @@ def load_config(config_path="config.json"):
                 "output_file": "Output.xlsx",
                 "detailed_output_file": "DetailedOutput.xlsx",
                 "shock_scenario": {
+                    "scenario_type": "Percentage Change", # Added default
                     "s1_change": -0.1,
                     "s2_change": 0.1,
-                    "s3_change": 0.0
+                    "s3_change": 0.0,
+                    "s1_reallocation_percentage": 0.5 # Added default
                 },
                 "variables_to_exclude": []
             }
@@ -95,16 +99,44 @@ def run_simulation(config=None):
     input_file = sim_config.get("input_file", "Input.xlsx")
     output_file = sim_config.get("output_file", "Output.xlsx")
     detailed_output_file = sim_config.get("detailed_output_file", "DetailedOutput.xlsx")
-    shock_scenario = sim_config.get("shock_scenario", {"s1_change": -0.1, "s2_change": 0.1, "s3_change": 0.0})
+    
+    # Default shock_scenario if not fully present in config
+    default_full_shock_scenario = {
+        "scenario_type": "Percentage Change",
+        "s1_change": -0.1,
+        "s2_change": 0.1,
+        "s3_change": 0.0,
+        "s1_reallocation_percentage": 0.5  # Default 50%
+    }
+    shock_scenario = sim_config.get("shock_scenario", default_full_shock_scenario.copy())
+    # Ensure all keys are present by merging with defaults
+    for key, value in default_full_shock_scenario.items():
+        shock_scenario.setdefault(key, value)
+        
     variables_to_exclude = sim_config.get("variables_to_exclude", [])
     
     try:
         print(f"Loading data from {input_file}...")
-        # Load the Excel file with the updated structure
         parameters_df = pd.read_excel(input_file, sheet_name='parameters')
-        data_df = pd.read_excel(input_file, sheet_name='data_2024')
+        data_df = pd.read_excel(input_file, sheet_name='data_2024') # This is the main df for baseline
+
+        data_2012_df = None
+        if shock_scenario.get("scenario_type") == "use_2012_values":
+            try:
+                print("Loading data_2012 sheet for 'Use 2012 Values' scenario...")
+                data_2012_df = pd.read_excel(input_file, sheet_name='data_2012')
+                print(f"Successfully loaded 'data_2012' sheet. Columns: {data_2012_df.columns.tolist()}")
+                print(f"data_2012_df head:\n{data_2012_df.head()}")
+                required_cols_2012 = ['age', 'sex', 's1', 's2', 's3']
+                if not all(col in data_2012_df.columns for col in required_cols_2012):
+                    raise ValueError(f"data_2012 sheet is missing one of required columns: {required_cols_2012}")
+            except FileNotFoundError:
+                print(f"Error: Input file {input_file} not found when trying to load data_2012 sheet.")
+                raise
+            except Exception as e:
+                print(f"Error loading or validating data_2012 sheet: {str(e)}")
+                raise
         
-        # Create a working copy of the data
         df = data_df.copy()
         
         # Identify the columns that are NOT baseline variables
@@ -175,51 +207,155 @@ def run_simulation(config=None):
         print("\nAdding demographic factors to dataframe...")
         df = pd.concat([df, pd.DataFrame(new_columns)], axis=1)
         
-        # Get shock values from config
-        s1_change = shock_scenario.get("s1_change", -0.1)
-        s2_change = shock_scenario.get("s2_change", 0.1)
-        s3_change = shock_scenario.get("s3_change", 0.0)
-        
         # Apply the shock scenario
-        print(f"Applying shock scenario: s1 {s1_change:+.1f}, s2 {s2_change:+.1f}, s3 {s3_change:+.1f}")
-        shock_columns = {
-            's1_as': df['s1'] + s1_change,
-            's2_as': df['s2'] + s2_change,
-            's3_as': df['s3'] + s3_change
-        }
-        df = pd.concat([df, pd.DataFrame(shock_columns)], axis=1)        # Store all results
+        scenario_type = shock_scenario.get("scenario_type")
+        print(f"Selected scenario type: {scenario_type}")
+
+        if scenario_type == "use_2012_values":
+            if data_2012_df is None:
+                raise ValueError("data_2012_df not loaded, cannot proceed with 'Use 2012 Values' scenario.")
+            print("Applying shock scenario: Using s1, s2, s3 values from data_2012 sheet.")
+            print(f"df (data_2024) relevant columns head before merge:\n{df[['age', 'sex', 's1', 's2', 's3']].head()}")
+            
+            # Prepare the 2012 data with renamed columns for s-values
+            data_2012_s_values_renamed = data_2012_df[['age', 'sex', 's1', 's2', 's3']].copy()
+            data_2012_s_values_renamed.rename(columns={
+                's1': 's1_from2012',
+                's2': 's2_from2012',
+                's3': 's3_from2012'
+            }, inplace=True)
+            # print(f"DEBUG: Renamed data_2012_s_values_renamed head:\n{data_2012_s_values_renamed.head()}")
+
+            # Merge the prepared 2012 s-values into the main df
+            # This adds s1_from2012, s2_from2012, s3_from2012 columns to df
+            df = pd.merge(
+                df,
+                data_2012_s_values_renamed,
+                on=['age', 'sex'],
+                how='left'
+            )
+            # print(f"DEBUG: df after merge with 2012 values (should have sX_from2012 cols):\n{df[['age', 'sex', 's1', 's2', 's3', 's1_from2012', 's2_from2012', 's3_from2012']].head(7)}")
+
+            # Check for unmatched rows from the 2012 data merge
+            # This must be done on one of the sX_from2012 columns BEFORE fillna
+            unmatched_count = df['s1_from2012'].isnull().sum() 
+            if unmatched_count > 0:
+                print(f"Warning: {unmatched_count} demographic groups in data_2024 found no s-value match in data_2012. Their s-values for the 'as' scenario will be their baseline data_2024 s-values.")
+
+            # Assign to sX_as columns in the df.
+            # If a group in 2024 data has no match in 2012 (sX_from2012 is NaN), use its original 2024 s-value.
+            df['s1_as'] = df['s1_from2012'].fillna(df['s1'])
+            df['s2_as'] = df['s2_from2012'].fillna(df['s2'])
+            df['s3_as'] = df['s3_from2012'].fillna(df['s3'])
+            
+            # Drop the temporary sX_from2012 columns as they are no longer needed
+            df.drop(columns=['s1_from2012', 's2_from2012', 's3_from2012'], inplace=True, errors='ignore') # errors='ignore' in case they weren't there for some reason
+            
+            print(f"df head after assigning sX_as from 2012 values:\n{df[['age', 'sex', 's1', 's2', 's3', 's1_as', 's2_as', 's3_as']].head()}")
+
+        elif scenario_type == "s1_reallocated_to_s2":
+            s1_reallocation_percentage = shock_scenario.get("s1_reallocation_percentage")
+            print(f"Applying shock scenario: S1 reallocated to S2 by {s1_reallocation_percentage*100:.1f}%.")
+            
+            amount_reallocated = df['s1'] * s1_reallocation_percentage
+            df['s1_as'] = df['s1'] - amount_reallocated
+            df['s2_as'] = df['s2'] + amount_reallocated
+            df['s3_as'] = df['s3'] # s3 is not changed by this scenario type, uses baseline s3 from data_2024
+            
+        else: # Default to "Percentage Change"
+            s1_change = shock_scenario.get("s1_change")
+            s2_change = shock_scenario.get("s2_change")
+            s3_change = shock_scenario.get("s3_change")
+            print(f"Applying shock scenario (Percentage Change): s1 {s1_change:+.2f}, s2 {s2_change:+.2f}, s3 {s3_change:+.2f}")
+            df['s1_as'] = df['s1'] + s1_change
+            df['s2_as'] = df['s2'] + s2_change
+            df['s3_as'] = df['s3'] + s3_change
+        
+        # Ensure sX_as columns are not negative (or handle as per model's logic if they can be)
+        # For now, let's assume they can be, as original sX + change could be negative.
+        # If they must be non-negative:
+        # df['s1_as'] = np.maximum(0, df['s1_as'])
+        # df['s2_as'] = np.maximum(0, df['s2_as'])
+        # df['s3_as'] = np.maximum(0, df['s3_as'])
+
+        # The old way of creating shock_columns dictionary and concatenating is no longer needed
+        # as sX_as are now directly part of the df.
+        
+        # Store all results
         results = []
-          # Define variable types for specialized analysis
-        rate_variables = ["employment"]  # Variables that represent a rate/proportion of the population
-        per_capita_variables = [
-            "absence", "cancer", "diabetes", "hypertension", "mortality", 
-            "heart_disease", "stroke", "colorectal_cancer", "breast_cancer", 
-            "endometrial_cancer", "depression", "anxiety", "public_health_costs"
-        ]  # Variables that represent per capita values
-        prevalence_variables = ["body_fat_prc"]  # Variables that represent prevalence rates
-        average_variables = ["earnings", "life_expectancy"]  # Variables that represent averages
+
+        # --- Dynamically define variable types and friendly names ---
+        rate_variables = []
+        per_capita_variables = []
+        prevalence_variables = []
+        average_variables = []
+        variable_friendly_names = {}
+
+        if 'variable_type' in parameters_df.columns:
+            print("Loading variable types from 'parameters' sheet.")
+            for _, row in parameters_df.iterrows():
+                var_name = row['variable']
+                var_type = str(row['variable_type']).lower() if pd.notna(row['variable_type']) else ''
+                
+                if var_name not in baseline_vars: # Only consider variables being processed
+                    continue
+
+                if var_type == 'rate':
+                    rate_variables.append(var_name)
+                elif var_type == 'per_capita':
+                    per_capita_variables.append(var_name)
+                elif var_type == 'prevalence':
+                    prevalence_variables.append(var_name)
+                elif var_type == 'average':
+                    average_variables.append(var_name)
+                # else:
+                #     print(f"Warning: Variable '{var_name}' has unknown or missing type '{row['variable_type']}' in 'parameters' sheet.")
+        else:
+            print("Warning: 'variable_type' column not found in 'parameters' sheet. Using hardcoded variable types.")
+            # Fallback to hardcoded lists (ensure these are comprehensive or match your old defaults)
+            default_rate_variables = ["employment"] 
+            default_per_capita_variables = [
+                "absence", "cancer", "diabetes", "hypertension", "mortality", 
+                "heart_disease", "stroke", "colorectal_cancer", "breast_cancer", 
+                "endometrial_cancer", "depression", "anxiety", "public_health_costs"
+            ]
+            default_prevalence_variables = ["body_fat_prc"]
+            default_average_variables = ["earnings", "life_expectancy"]
+            # Filter these lists to only include variables present in baseline_vars
+            rate_variables = [v for v in default_rate_variables if v in baseline_vars]
+            per_capita_variables = [v for v in default_per_capita_variables if v in baseline_vars]
+            prevalence_variables = [v for v in default_prevalence_variables if v in baseline_vars]
+            average_variables = [v for v in default_average_variables if v in baseline_vars]
+
+
+        if 'friendly_name' in parameters_df.columns:
+            print("Loading friendly names from 'parameters' sheet.")
+            for _, row in parameters_df.iterrows():
+                var_name = row['variable']
+                if var_name not in baseline_vars: # Only consider variables being processed
+                    continue
+                if pd.notna(row['friendly_name']):
+                    variable_friendly_names[var_name] = str(row['friendly_name'])
+                else: # If friendly_name is blank in the sheet, use the variable name itself
+                   variable_friendly_names[var_name] = var_name 
+        else:
+            print("Warning: 'friendly_name' column not found in 'parameters' sheet. Using hardcoded friendly names or variable names.")
+            # Fallback to hardcoded dictionary
+            default_friendly_names_map = {
+                "employment": "Employment Rate", "absence": "Absence Days", "cancer": "Cancer Prevalence",
+                "diabetes": "Diabetes Prevalence", "hypertension": "Hypertension Prevalence",
+                "mortality": "Mortality Rate", "heart_disease": "Heart Disease Prevalence",
+                "stroke": "Stroke Prevalence", "colorectal_cancer": "Colorectal Cancer Prevalence",
+                "breast_cancer": "Breast Cancer Prevalence", "endometrial_cancer": "Endometrial Cancer Prevalence",
+                "depression": "Depression Prevalence", "anxiety": "Anxiety Prevalence",
+                "public_health_costs": "Public Health Costs", "body_fat_prc": "Body Fat Percentage",
+                "earnings": "Earnings", "life_expectancy": "Life Expectancy"
+            }
+            for var_name in baseline_vars:
+                variable_friendly_names[var_name] = default_friendly_names_map.get(var_name, var_name)
         
-        # Dictionary to map variables to their user-friendly names for reporting
-        variable_friendly_names = {
-            "employment": "Employment Rate",
-            "absence": "Absence Days",
-            "cancer": "Cancer Prevalence",
-            "diabetes": "Diabetes Prevalence",
-            "hypertension": "Hypertension Prevalence",
-            "mortality": "Mortality Rate",
-            "heart_disease": "Heart Disease Prevalence",
-            "stroke": "Stroke Prevalence",
-            "colorectal_cancer": "Colorectal Cancer Prevalence",
-            "breast_cancer": "Breast Cancer Prevalence",
-            "endometrial_cancer": "Endometrial Cancer Prevalence",
-            "depression": "Depression Prevalence",
-            "anxiety": "Anxiety Prevalence",
-            "public_health_costs": "Public Health Costs",
-            "body_fat_prc": "Body Fat Percentage",
-            "earnings": "Earnings",
-            "life_expectancy": "Life Expectancy"
-        }
-        
+        # --- End of dynamic definitions ---
+
         # Initialize total population-level variables
         population_totals = {
             'total_population_bs': df['population'].sum(),

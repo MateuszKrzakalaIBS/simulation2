@@ -2,119 +2,119 @@
     "variable": "absence",
     "friendly_name": "Absence Days",
     "overall_change": {
-        "relative_change_pct": -2.0938656167922787,
-        "absolute_change": -0.010469328083961393
+        "relative_change_pct": -0.8100336607261949,
+        "absolute_change": -0.004050168303630974
     },
     "top_contributors": [
         {
-            "age": "25-29",
+            "age": "20-24",
             "sex": "M",
-            "impact_change": -19986.90550836688
+            "impact_change": -31262.27240320109
         },
         {
             "age": "25-29",
+            "sex": "M",
+            "impact_change": 28038.36437525705
+        },
+        {
+            "age": "50-54",
             "sex": "K",
-            "impact_change": -18643.2571673817
+            "impact_change": -24923.072625833098
+        },
+        {
+            "age": "50-54",
+            "sex": "M",
+            "impact_change": -19346.668555296143
         },
         {
             "age": "30-34",
-            "sex": "M",
-            "impact_change": -18437.37737630715
-        },
-        {
-            "age": "30-34",
             "sex": "K",
-            "impact_change": -17653.60497791448
-        },
-        {
-            "age": "55-59",
-            "sex": "K",
-            "impact_change": -16963.32683671126
+            "impact_change": -15563.537158248248
         }
     ],
     "demographic_impact": {
         "by_age": [
             {
                 "age": "15-19",
-                "change": 0.0,
+                "change": 0.017216506483366614,
                 "baseline": 1155380.1745687216,
                 "population": 2310760.349137443
             },
             {
                 "age": "20-24",
-                "change": -32700.881866716656,
+                "change": -34659.05278601113,
                 "baseline": 1389122.8882263137,
                 "population": 2778245.776452628
             },
             {
                 "age": "25-29",
-                "change": -38630.162675748594,
+                "change": 18018.544924369882,
                 "baseline": 1638429.5039382046,
                 "population": 3276859.007876409
             },
             {
                 "age": "30-34",
-                "change": -36090.98235422159,
+                "change": -16785.36118687919,
                 "baseline": 1564302.353087278,
                 "population": 3128604.706174556
             },
             {
                 "age": "35-39",
-                "change": -32665.670498515694,
+                "change": -23411.307520027898,
                 "baseline": 1441911.34433576,
                 "population": 2883822.68867152
             },
             {
                 "age": "40-44",
-                "change": -27505.226433736563,
+                "change": -5379.779462510173,
                 "baseline": 1199770.0925232205,
                 "population": 2399540.185046441
             },
             {
                 "age": "45-49",
-                "change": -26540.158862698838,
+                "change": -26789.300465489825,
                 "baseline": 1202337.315554011,
                 "population": 2404674.631108022
             },
             {
                 "age": "50-54",
-                "change": -31169.857652245395,
+                "change": -44269.74118112924,
                 "baseline": 1424816.5714785196,
                 "population": 2849633.142957039
             },
             {
                 "age": "55-59",
-                "change": -32390.987270359554,
+                "change": -18000.384992530628,
                 "baseline": 1468883.7779161034,
                 "population": 2937767.555832207
             },
             {
                 "age": "60-64",
-                "change": -27406.302759841034,
+                "change": -21227.115842448336,
                 "baseline": 1248920.4663098517,
                 "population": 2497840.932619704
             },
             {
                 "age": "65-69",
-                "change": -15958.501105428582,
+                "change": 1257.553854861058,
                 "baseline": 728047.9538830696,
                 "population": 1456095.9077661394
             },
             {
                 "age": "70-74",
-                "change": -14418.679428818945,
+                "change": -1846.4783008078468,
                 "baseline": 661031.3867878201,
                 "population": 1322062.7735756407
             },
             {
                 "age": "75-79",
-                "change": -12573.959566016158,
+                "change": 21536.98076935779,
                 "baseline": 571705.5147396668,
                 "population": 1143411.0294793337
             },
             {
                 "age": "80-100",
-                "change": -15301.653401849395,
+                "change": 18725.741624709546,
                 "baseline": 703385.551347107,
                 "population": 1406771.102694214
             }
@@ -122,13 +122,13 @@
         "by_sex": [
             {
                 "sex": "K",
-                "change": -179232.44487895595,
+                "change": -71178.67026573989,
                 "baseline": 8544521.904759148,
                 "population": 17089043.809518296
             },
             {
                 "sex": "M",
-                "change": -164120.57899724107,
+                "change": -61651.01308228961,
                 "baseline": 7853522.989936499,
                 "population": 15707045.979873
             }
@@ -136,16 +136,16 @@
     },
     "impact_metrics": {
         "total_impact_bs": 16398044.894695647,
-        "total_impact_as": 16054691.870819453,
-        "net_impact_change": -343353.0238761939,
-        "impact_change_pct": -2.0938656167922796
+        "total_impact_as": 16265215.21134762,
+        "net_impact_change": -132829.683348028,
+        "impact_change_pct": -0.8100336607261945
     },
     "absence_metrics": {
         "working_population": 25156988.626738526,
         "days_lost_per_worker_bs": 0.49999999999999994,
-        "days_lost_per_worker_as": 0.488667155890389,
+        "days_lost_per_worker_as": 0.4931429194061284,
         "total_days_lost_bs": 12578494.313369261,
-        "total_days_lost_as": 12293394.082995178,
-        "days_lost_change": -285100.2303740829
+        "total_days_lost_as": 12405990.814856606,
+        "days_lost_change": -172503.4985126555
     }
 }
