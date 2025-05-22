@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  simulation-app:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./plots:/app/plots
+      - ./data_cache:/app/data_cache
+    environment:
+      - STREAMLIT_SERVER_ENABLE_STATIC_SERVING=true
+      - STREAMLIT_SERVER_FILE_WATCHER_TYPE=none

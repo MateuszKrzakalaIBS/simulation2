@@ -1,0 +1,20 @@
+{
+    "simulation": {
+        "input_file": "Input.xlsx",
+        "output_file": "Output.xlsx",
+        "detailed_output_file": "DetailedOutput.xlsx",
+        "shock_scenario": {
+            "s1_change": -0.1,
+            "s2_change": 0.1,
+            "s3_change": 0.0
+        },
+        "variables_to_exclude": []
+    },
+    "visualization": {
+        "output_folder": "plots",
+        "create_summary_plots": true,
+        "create_detailed_plots": true,
+        "plot_format": "png",
+        "color_scheme": "RdBu_r"
+    }
+}

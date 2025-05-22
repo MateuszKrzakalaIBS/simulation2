@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Demographic Simulation Launcher</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f0f4f8;
+            color: #333;
+        }
+        
+        .container {
+            width: 800px;
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+        }
+        
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-top: 0;
+            margin-bottom: 30px;
+        }
+        
+        .options {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        
+        .option {
+            background-color: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            transition: transform 0.2s, box-shadow 0.2s;
+            cursor: pointer;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+        }
+        
+        .option:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 6px 12px rgba(0, 0, 0, 0.1);
+        }
+        
+        .option h2 {
+            margin-top: 0;
+            color: #3498db;
+        }
+        
+        .option p {
+            margin-bottom: 15px;
+            color: #7f8c8d;
+        }
+        
+        .btn {
+            display: inline-block;
+            background-color: #3498db;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-weight: 500;
+            transition: background-color 0.2s;
+        }
+        
+        .btn:hover {
+            background-color: #2980b9;
+        }
+        
+        .advanced {
+            margin-top: 30px;
+            text-align: center;
+        }
+        
+        footer {
+            text-align: center;
+            margin-top: 30px;
+            color: #95a5a6;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Demographic Simulation Tool</h1>
+        
+        <div class="options">
+            <div class="option">
+                <h2>Interactive Dashboard</h2>
+                <p>Launch the enhanced interactive dashboard with Plotly visualizations.</p>
+                <a href="#" class="btn" onclick="runScript('run_interactive_webapp.bat')">Launch Interactive Dashboard</a>
+            </div>
+            
+            <div class="option">
+                <h2>Standard Interface</h2>
+                <p>Launch the standard Streamlit interface with basic visualizations.</p>
+                <a href="#" class="btn" onclick="runScript('run_webapp.bat')">Launch Standard Interface</a>
+            </div>
+            
+            <div class="option">
+                <h2>Download External Data</h2>
+                <p>Download and integrate data from Eurostat and World Bank.</p>
+                <a href="#" class="btn" onclick="runExternalData()">Download External Data</a>
+            </div>
+            
+            <div class="option">
+                <h2>Docker Deployment</h2>
+                <p>Deploy the application using Docker containers.</p>
+                <a href="#" class="btn" onclick="runScript('deploy_docker.bat')">Docker Deployment</a>
+            </div>
+        </div>
+        
+        <div class="advanced">
+            <a href="#" class="btn" onclick="runScript('deploy_simulation.bat')">Advanced Deployment Options</a>
+        </div>
+        
+        <footer>
+            Demographic Counterfactual Simulation Tool &copy; 2025
+        </footer>
+    </div>
+    
+    <script>
+        function runScript(scriptName) {
+            try {
+                const shell = new ActiveXObject("WScript.Shell");
+                shell.Run(scriptName, 1, false);
+            } catch (e) {
+                alert("Failed to run script. Please run " + scriptName + " manually.");
+            }
+        }
+        
+        function runExternalData() {
+            const country = prompt("Enter country code (default: PL):", "PL");
+            if (country === null) return;
+            
+            const year = prompt("Enter year (default: 2022):", "2022");
+            if (year === null) return;
+            
+            const output = prompt("Enter output filename (default: External_Input.xlsx):", "External_Input.xlsx");
+            if (output === null) return;
+            
+            try {
+                const shell = new ActiveXObject("WScript.Shell");
+                shell.Run(`powershell -Command "python external_data_integration.py --country ${country} --year ${year} --output ${output}"`, 1, false);
+            } catch (e) {
+                alert("Failed to run external data integration. Please run the script manually.");
+            }
+        }
+    </script>
+</body>
+</html>
