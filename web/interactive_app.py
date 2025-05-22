@@ -298,19 +298,146 @@ def main():
                         # Load detailed data for this variable
                         detailed_output_file_path = resolve_path(config.get("simulation", {}).get("detailed_output_file", "DetailedOutput.xlsx"))
                         var_df = pd.read_excel(detailed_output_file_path, sheet_name=selected_var[:30])
-                        
-                        # Create interactive visualizations for this variable
+                          # Create interactive visualizations for this variable
                         var_figs = interactive_visualizations.visualize_detailed_interactive(var_df, selected_var, config)
                         
-                        # Display the visualizations
-                        st.subheader(f"Demographic Heatmap for {selected_var}")
-                        st.plotly_chart(var_figs['demographic_heatmap'], use_container_width=True)
+                        # Display the basic visualizations
+                        st.subheader(f"Demographic Impact Analysis for {selected_var}")
                         
-                        st.subheader(f"Age Group Comparison for {selected_var}")
-                        st.plotly_chart(var_figs['age_comparison'], use_container_width=True)
+                        # Get variable type and additional metrics
+                        var_type = None
+                        var_row = summary_df[summary_df['variable'] == selected_var].iloc[0] if not summary_df[summary_df['variable'] == selected_var].empty else None
                         
-                        st.subheader(f"Age Group Differences for {selected_var}")
-                        st.plotly_chart(var_figs['age_difference'], use_container_width=True)
+                        if var_row is not None:
+                            # Display both relative and absolute metrics
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                st.metric("Relative Change (%)", f"{var_row.get('relative_change_pct', 0):.2f}%")
+                            with col2:
+                                st.metric("Absolute Change", f"{var_row.get('absolute_change', 0):.4f}")
+                                
+                            # Display specialized metrics based on variable type
+                            if "total_employed_bs" in var_row:
+                                # Employment metrics
+                                st.subheader("Employment Metrics")
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.metric("Total Employed (Baseline)", f"{var_row.get('total_employed_bs', 0):,.0f}")
+                                    st.metric("Total Employed (Alternative)", f"{var_row.get('total_employed_as', 0):,.0f}")
+                                with col2:
+                                    st.metric("Net Employment Change", f"{var_row.get('employed_change', 0):,.0f}")
+                                    st.metric("Employment Change (%)", f"{var_row.get('employed_change_pct', 0):.2f}%")
+                                var_type = "employment"
+                                diff_col = selected_var + "_contribution"
+                                
+                            elif "total_impact_bs" in var_row:
+                                # Per-capita variables (health indicators, absence, costs)
+                                st.subheader("Total Impact Metrics")
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.metric("Total Impact (Baseline)", f"{var_row.get('total_impact_bs', 0):,.2f}")
+                                    st.metric("Total Impact (Alternative)", f"{var_row.get('total_impact_as', 0):,.2f}")
+                                with col2:
+                                    st.metric("Net Impact Change", f"{var_row.get('impact_change', 0):,.2f}")
+                                    st.metric("Impact Change (%)", f"{var_row.get('impact_change_pct', 0):.2f}%")
+                                var_type = "per_capita"
+                                diff_col = selected_var + "_total_diff"
+                                
+                                # Special case for absence
+                                if selected_var == "absence" and "total_days_lost_bs" in var_row:
+                                    st.subheader("Absence Days Metrics")
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.metric("Total Days Lost (Baseline)", f"{var_row.get('total_days_lost_bs', 0):,.0f}")
+                                        st.metric("Total Days Lost (Alternative)", f"{var_row.get('total_days_lost_as', 0):,.0f}")
+                                    with col2:
+                                        st.metric("Days Lost Change", f"{var_row.get('days_lost_change', 0):,.0f}")
+                                        if 'economic_impact_change' in var_row:
+                                            st.metric("Economic Impact", f"${var_row.get('economic_impact_change', 0):,.2f}")
+                                
+                                # Special case for public health costs
+                                if selected_var == "public_health_costs" and "total_costs_bs" in var_row:
+                                    st.subheader("Public Health Costs Metrics")
+                                    col1, col2 = st.columns(2)
+                                    with col1:
+                                        st.metric("Total Costs (Baseline)", f"${var_row.get('total_costs_bs', 0):,.2f}")
+                                        st.metric("Total Costs (Alternative)", f"${var_row.get('total_costs_as', 0):,.2f}")
+                                    with col2:
+                                        cost_savings = var_row.get('cost_savings', 0)
+                                        additional_costs = var_row.get('additional_costs', 0)
+                                        if cost_savings > 0:
+                                            st.metric("Cost Savings", f"${cost_savings:,.2f}")
+                                        else:
+                                            st.metric("Additional Costs", f"${additional_costs:,.2f}")
+                                        if 'per_capita_cost_change' in var_row:
+                                            st.metric("Per Capita Change", f"${var_row.get('per_capita_cost_change', 0):,.2f}")
+                                
+                            elif "total_affected_bs" in var_row:
+                                # Prevalence variables
+                                st.subheader("Prevalence Metrics")
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.metric("Total Affected (Baseline)", f"{var_row.get('total_affected_bs', 0):,.0f}")
+                                    st.metric("Total Affected (Alternative)", f"{var_row.get('total_affected_as', 0):,.0f}")
+                                with col2:
+                                    st.metric("Affected Change", f"{var_row.get('affected_change', 0):,.0f}")
+                                    if 'prevalence_change' in var_row:
+                                        st.metric("Prevalence Change (%)", f"{var_row.get('prevalence_change', 0):.2f}%")
+                                var_type = "prevalence"
+                                diff_col = selected_var + "_absolute_diff"
+                        
+                        # Create demographic visualizations for this variable
+                        st.subheader("Demographic Analysis")
+                        
+                        try:
+                            # Create tabs for different visualizations
+                            demo_tab1, demo_tab2, demo_tab3 = st.tabs(["Original Visualizations", "Contribution Analysis", "Demographic Heatmap"])
+                            
+                            with demo_tab1:
+                                # Display the original visualizations
+                                st.subheader(f"Demographic Heatmap")
+                                st.plotly_chart(var_figs['demographic_heatmap'], use_container_width=True)
+                                
+                                st.subheader(f"Age Group Comparison")
+                                st.plotly_chart(var_figs['age_comparison'], use_container_width=True)
+                                
+                                st.subheader(f"Age Group Differences")
+                                st.plotly_chart(var_figs['age_difference'], use_container_width=True)
+                            
+                            with demo_tab2:
+                                st.write("This chart shows which demographic groups contribute most to the overall change:")
+                                # Create demographic contribution chart
+                                if var_type is not None and 'diff_col' in locals():
+                                    contrib_fig = interactive_visualizations.create_demographic_contribution_chart(
+                                        summary_df, var_df, selected_var, config
+                                    )
+                                    st.plotly_chart(contrib_fig, use_container_width=True)
+                                else:
+                                    st.write("Demographic contribution data not available for this variable.")
+                            
+                            with demo_tab3:
+                                st.write("This heatmap shows the distribution of impact across age and sex groups:")
+                                # Create heat map visualization
+                                if var_type == "employment":
+                                    heatmap_col = selected_var + "_contribution"
+                                elif var_type == "per_capita":
+                                    heatmap_col = selected_var + "_total_diff"
+                                elif var_type == "prevalence":
+                                    heatmap_col = selected_var + "_absolute_diff"
+                                else:
+                                    heatmap_col = selected_var + "_diff"
+                                    
+                                heatmap_fig = interactive_visualizations.create_demographic_impact_heatmap(
+                                    var_df, selected_var, heatmap_col, config
+                                )
+                                st.plotly_chart(heatmap_fig, use_container_width=True)
+                                
+                        except Exception as viz_err:
+                            st.error(f"Error creating demographic visualizations: {str(viz_err)}")
+                        
+                        # Display detailed data
+                        st.subheader("Detailed Data")
+                        st.dataframe(var_df, use_container_width=True)
                     except Exception as e:
                         st.error(f"Error displaying variable details: {str(e)}")
                 

@@ -1,0 +1,157 @@
+{
+    "variable": "employment",
+    "friendly_name": "Employment Rate",
+    "overall_change": {
+        "relative_change_pct": 0.22391734894443308,
+        "absolute_change": 0.0013454860365704757
+    },
+    "top_contributors": [
+        {
+            "age": "30-34",
+            "sex": "K",
+            "employment_change": 6410.909157262649
+        },
+        {
+            "age": "25-29",
+            "sex": "K",
+            "employment_change": 6275.208263121545
+        },
+        {
+            "age": "35-39",
+            "sex": "K",
+            "employment_change": 5922.097154209157
+        },
+        {
+            "age": "25-29",
+            "sex": "M",
+            "employment_change": 5611.378587608226
+        },
+        {
+            "age": "30-34",
+            "sex": "M",
+            "employment_change": 5493.710414757254
+        }
+    ],
+    "demographic_impact": {
+        "by_age": [
+            {
+                "age": "15-19",
+                "change": 0.0,
+                "baseline": 116500.77700470926,
+                "population": 2310760.349137443
+            },
+            {
+                "age": "20-24",
+                "change": 0.0,
+                "baseline": 1456569.950985529,
+                "population": 2778245.776452628
+            },
+            {
+                "age": "25-29",
+                "change": 11886.58685072983,
+                "baseline": 2744402.3557039294,
+                "population": 3276859.007876409
+            },
+            {
+                "age": "30-34",
+                "change": 11904.619572020125,
+                "baseline": 2729131.4854990523,
+                "population": 3128604.706174556
+            },
+            {
+                "age": "35-39",
+                "change": 11002.070117107043,
+                "baseline": 2514032.454325881,
+                "population": 2883822.68867152
+            },
+            {
+                "age": "40-44",
+                "change": 9333.40432588112,
+                "baseline": 2127687.145617741,
+                "population": 2399540.185046441
+            },
+            {
+                "age": "45-49",
+                "change": -3.992387949628642e-13,
+                "baseline": 2112029.416052702,
+                "population": 2404674.631108022
+            },
+            {
+                "age": "50-54",
+                "change": 0.0,
+                "baseline": 2358197.863568593,
+                "population": 2849633.142957039
+            },
+            {
+                "age": "55-59",
+                "change": 0.0,
+                "baseline": 2214612.770644124,
+                "population": 2937767.555832207
+            },
+            {
+                "age": "60-64",
+                "change": 0.0,
+                "baseline": 1050906.6419082459,
+                "population": 2497840.932619704
+            },
+            {
+                "age": "65-69",
+                "change": 1.7726175781850212e-11,
+                "baseline": 176346.10830718483,
+                "population": 1456095.9077661394
+            },
+            {
+                "age": "70-74",
+                "change": 0.0,
+                "baseline": 64508.890362519,
+                "population": 1322062.7735756407
+            },
+            {
+                "age": "75-79",
+                "change": -2.9429717197055825e-12,
+                "baseline": 26158.835294389486,
+                "population": 1143411.0294793337
+            },
+            {
+                "age": "80-100",
+                "change": -6.171331964045566e-13,
+                "baseline": 15597.736325621412,
+                "population": 1406771.102694214
+            }
+        ],
+        "by_sex": [
+            {
+                "sex": "K",
+                "change": 23771.85890240324,
+                "baseline": 9102063.290574202,
+                "population": 17089043.809518296
+            },
+            {
+                "sex": "M",
+                "change": 20354.821963334885,
+                "baseline": 10604619.14102602,
+                "population": 15707045.979873
+            }
+        ]
+    },
+    "employment_metrics": {
+        "total_employed_bs": 19706682.431600217,
+        "total_employed_as": 19750809.112465955,
+        "net_employment_change": 44126.68086573854,
+        "employment_change_pct": 0.22391734894443815,
+        "employment_change_by_sex": [
+            {
+                "sex": "K",
+                "change": 23771.85890240324,
+                "baseline": 9102063.290574202,
+                "population": 17089043.809518296
+            },
+            {
+                "sex": "M",
+                "change": 20354.821963334885,
+                "baseline": 10604619.14102602,
+                "population": 15707045.979873
+            }
+        ]
+    }
+}

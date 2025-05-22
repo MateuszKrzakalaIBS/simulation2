@@ -143,8 +143,7 @@ def visualize_summary_interactive(summary_df, config=None):
     )
     
     figures['before_after'] = fig_before_after
-    
-    # 3. Absolute Changes
+      # 3. Absolute Changes
     fig_abs_changes = px.bar(
         summary_df.sort_values('absolute_change', ascending=False),
         x='variable',
@@ -164,6 +163,132 @@ def visualize_summary_interactive(summary_df, config=None):
     )
     
     figures['absolute_changes'] = fig_abs_changes
+    
+    # 4. Total Impact Changes - New visualization for total impacts across the population
+    # First create a dataframe with variables that have total impact metrics
+    impact_metrics = []
+    
+    # Process each variable to get the right impact metric based on its type
+    for _, row in summary_df.iterrows():
+        var = row['variable']
+        impact_row = {
+            'variable': var,
+            'friendly_name': var.replace('_', ' ').title()  # Simple transformation for display
+        }
+        
+        # Employment variables - show total employed
+        if 'total_employed_bs' in row and 'total_employed_as' in row:
+            impact_row.update({
+                'impact_type': 'Employment',
+                'total_bs': row['total_employed_bs'],
+                'total_as': row['total_employed_as'],
+                'total_change': row['employed_change'],
+                'total_change_pct': row['employed_change_pct'] if 'employed_change_pct' in row else None
+            })
+            impact_metrics.append(impact_row)
+        
+        # Health indicators and per-capita variables - show total impact
+        elif 'total_impact_bs' in row and 'total_impact_as' in row:
+            impact_row.update({
+                'impact_type': 'Total Impact',
+                'total_bs': row['total_impact_bs'],
+                'total_as': row['total_impact_as'],
+                'total_change': row['impact_change'],
+                'total_change_pct': row['impact_change_pct'] if 'impact_change_pct' in row else None
+            })
+            impact_metrics.append(impact_row)
+            
+            # For specific variables, add specialized metrics
+            if var == 'absence' and 'total_days_lost_bs' in row:
+                impact_row = {
+                    'variable': var + '_days',
+                    'friendly_name': 'Absence Days Lost',
+                    'impact_type': 'Days Lost',
+                    'total_bs': row['total_days_lost_bs'],
+                    'total_as': row['total_days_lost_as'],
+                    'total_change': row['days_lost_change'],
+                    'total_change_pct': row['days_lost_change_pct'] if 'days_lost_change_pct' in row else None
+                }
+                impact_metrics.append(impact_row)
+            
+            elif var == 'public_health_costs' and 'total_costs_bs' in row:
+                impact_row = {
+                    'variable': var + '_costs',
+                    'friendly_name': 'Public Health Costs',
+                    'impact_type': 'Costs',
+                    'total_bs': row['total_costs_bs'],
+                    'total_as': row['total_costs_as'],
+                    'total_change': row['cost_savings'] if 'cost_savings' in row and row['cost_savings'] > 0 else row['additional_costs'] if 'additional_costs' in row else None,
+                    'is_saving': 'cost_savings' in row and row['cost_savings'] > 0
+                }
+                impact_metrics.append(impact_row)
+        
+        # Prevalence variables - show total affected individuals
+        elif 'total_affected_bs' in row and 'total_affected_as' in row:
+            impact_row.update({
+                'impact_type': 'Affected Population',
+                'total_bs': row['total_affected_bs'],
+                'total_as': row['total_affected_as'],
+                'total_change': row['affected_change'],
+                'total_change_pct': row['affected_change_pct'] if 'affected_change_pct' in row else None
+            })
+            impact_metrics.append(impact_row)
+    
+    # Create the visualization if we have impact metrics
+    if impact_metrics:
+        impact_df = pd.DataFrame(impact_metrics)
+        
+        # Sort by absolute change for better visualization
+        impact_df = impact_df.sort_values('total_change', key=abs, ascending=False)
+        
+        # Create the visualization
+        fig_total_impact = px.bar(
+            impact_df,
+            x='friendly_name',
+            y='total_change',
+            color='total_change',
+            color_continuous_scale=color_scheme,
+            title='Total Population-Level Impact of Scenario Change',
+            labels={'total_change': 'Total Change', 'friendly_name': 'Variable'},
+            text=impact_df['total_change'].apply(lambda x: f"{x:.1f}"),
+            hover_data=['total_bs', 'total_as', 'total_change_pct'],
+            category_orders={"friendly_name": impact_df['friendly_name'].tolist()}
+        )
+        
+        fig_total_impact.update_layout(
+            font=dict(size=14),
+            hoverlabel=dict(font_size=14),
+            height=600,
+            xaxis=dict(tickangle=45)
+        )
+        
+        figures['total_impact'] = fig_total_impact
+        
+        # 5. Before/After Total Impact Comparison
+        fig_total_comparison = px.bar(
+            impact_df,
+            x='friendly_name',
+            y=['total_bs', 'total_as'],
+            barmode='group',
+            title='Comparison of Total Impact Before and After Scenario Change',
+            labels={'value': 'Total Value', 'friendly_name': 'Variable', 'variable': 'Scenario'},
+            category_orders={"friendly_name": impact_df['friendly_name'].tolist()},
+            color_discrete_map={'total_bs': '#1f77b4', 'total_as': '#ff7f0e'}
+        )
+        
+        # Update names in legend
+        new_names = {'total_bs': 'Baseline', 'total_as': 'Alternative'}
+        fig_total_comparison.for_each_trace(lambda t: t.update(name=new_names[t.name]))
+        
+        fig_total_comparison.update_layout(
+            font=dict(size=14),
+            hoverlabel=dict(font_size=14),
+            height=600,
+            xaxis=dict(tickangle=45),
+            legend_title="Scenario"
+        )
+        
+        figures['total_comparison'] = fig_total_comparison
     
     # Save figures to HTML files
     if plot_format == "html":
@@ -332,17 +457,19 @@ def generate_interactive_dashboard(summary_df, detailed_dfs, config=None):
     
     # Generate summary visualizations
     summary_figs = visualize_summary_interactive(summary_df, config)
-    
-    # Create a dashboard with subplots
+      # Create a dashboard with subplots
     dashboard = make_subplots(
-        rows=2, cols=2,
+        rows=3, cols=2,
         subplot_titles=(
             "Relative Changes (%)", 
             "Before vs After Comparison",
             "Absolute Changes",
+            "Total Population Impact",
+            "Total Impact Before/After",
             "Variable Selection"
         ),
         specs=[
+            [{"type": "bar"}, {"type": "bar"}],
             [{"type": "bar"}, {"type": "bar"}],
             [{"type": "bar"}, {"type": "indicator"}]
         ],
@@ -366,6 +493,18 @@ def generate_interactive_dashboard(summary_df, detailed_dfs, config=None):
     for trace in abs_changes_fig.data:
         dashboard.add_trace(trace, row=2, col=1)
     
+    # Total Impact (if available)
+    if 'total_impact' in summary_figs:
+        total_impact_fig = summary_figs['total_impact']
+        for trace in total_impact_fig.data:
+            dashboard.add_trace(trace, row=2, col=2)
+    
+    # Total Comparison (if available)
+    if 'total_comparison' in summary_figs:
+        total_comparison_fig = summary_figs['total_comparison']
+        for trace in total_comparison_fig.data:
+            dashboard.add_trace(trace, row=3, col=1)
+    
     # Variable Selector - we'll add a dropdown with JavaScript in the HTML
     
     # Update layout
@@ -384,12 +523,23 @@ def generate_interactive_dashboard(summary_df, detailed_dfs, config=None):
     <head>
         <title>Demographic Simulation Dashboard</title>
         <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-        <style>
-            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+        <style>            body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
             .dashboard-container { width: 95%; margin: 0 auto; }
             .header { text-align: center; margin-bottom: 20px; }
             select { padding: 8px; font-size: 16px; margin: 10px 0; }
             .variable-details { margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+            .metric-container { display: flex; flex-wrap: wrap; margin-bottom: 15px; }
+            .metric-box { flex: 1; min-width: 200px; padding: 15px; margin: 5px; border: 1px solid #eee; border-radius: 5px; text-align: center; }
+            .metric-value { font-size: 24px; font-weight: bold; margin: 10px 0; }
+            .metric-title { font-size: 14px; color: #555; }
+            .metric-change { font-size: 14px; }
+            .metric-change.positive { color: green; }
+            .metric-change.negative { color: red; }
+            .tabs { display: flex; border-bottom: 1px solid #ddd; margin-bottom: 20px; }
+            .tab { padding: 10px 20px; cursor: pointer; }
+            .tab.active { background-color: #f5f5f5; border: 1px solid #ddd; border-bottom: none; }
+            .tab-content { display: none; }
+            .tab-content.active { display: block; }
         </style>
     </head>
     <body>
@@ -420,17 +570,18 @@ def generate_interactive_dashboard(summary_df, detailed_dfs, config=None):
             var dashboardDiv = document.getElementById('main-dashboard');
             
             // Load the main dashboard
-            Plotly.newPlot(dashboardDiv, {
+            // Plotly.newPlot(dashboardDiv, { // This line will be effectively replaced by the logic below
     """
     
     # Add the dashboard JSON
-    dashboard_json = dashboard.to_json()
-    html_content += f"data: {dashboard_json},"
+    dashboard_json_str = dashboard.to_json() # Get the JSON string for the figure
+    # Properly embed it as a JavaScript object literal
+    html_content += f"var figure = {dashboard_json_str};\\n" 
     
     html_content += """
-            }, {responsive: true});
+            Plotly.newPlot(dashboardDiv, figure.data, figure.layout, {responsive: true});
             
-            // Variable selector
+            // Variable details
             var variableSelect = document.getElementById('variable-select');
             var variableDetails = document.getElementById('variable-details');
             var heatmapDiv = document.getElementById('demographic-heatmap');
@@ -442,21 +593,51 @@ def generate_interactive_dashboard(summary_df, detailed_dfs, config=None):
     """
     
     # Add the variables list as JavaScript
-    var_list_js = "[" + ", ".join([f"'{var}'" for var in summary_df['variable']]) + "]"
-    html_content += f"variables = {var_list_js};"
+    var_list_js = "[" + ", ".join([f"\\\'{var}\\\'" for var in summary_df['variable']]) + "]" # Escaped quotes for JS
+    html_content += f"variables = {var_list_js};\\n" # Added newline for clarity
     
     html_content += """
+            function renderFetchedPlot(targetDiv, htmlContent) {
+                var parser = new DOMParser();
+                var doc = parser.parseFromString(htmlContent, 'text/html');
+                var scripts = Array.from(doc.getElementsByTagName('script'));
+                var plotlyScript = scripts.find(s => s.textContent.includes('Plotly.newPlot') || s.textContent.includes('Plotly.react'));
+
+                if (plotlyScript) {
+                    var scriptText = plotlyScript.textContent;
+                    // Regex to capture data (an array) and layout (an object) from Plotly's newPlot/react calls
+                    var match = scriptText.match(/Plotly\\\\.(?:newPlot|react)\\\\s*\\\\(\\\\s*[^,]+,\\\\s*(\\\\[[\\\\s\\\\S]*?\\\\])\\\\s*,\\\\s*(\\\\{[\\\\s\\\\S]*?\\\\})\\\\s*(?:,\\\\s*(\\\\{[\\\\s\\\\S]*?\\\\}))?\\\\s*\\\\);/);
+                    if (match) {
+                        var dataStr = match[1];
+                        var layoutStr = match[2];
+                        try {
+                            var dataObj = (new Function('return ' + dataStr))();
+                            var layoutObj = (new Function('return ' + layoutStr))();
+                            Plotly.newPlot(targetDiv, dataObj, layoutObj, {responsive: true});
+                        } catch (e) {
+                            console.error('Error parsing plot data/layout from script:', e, 'Data:', dataStr, 'Layout:', layoutStr);
+                            targetDiv.textContent = 'Error rendering plot.';
+                        }
+                    } else {
+                        console.error('Could not extract plot arguments from script. Script content:', scriptText);
+                        targetDiv.textContent = 'Could not parse plot data from fetched HTML.';
+                    }
+                } else {
+                    targetDiv.textContent = 'Could not find Plotly script in fetched HTML.';
+                }
+            }
+
             // Add options to the dropdown
             variables.forEach(function(variable) {
                 var option = document.createElement('option');
                 option.value = variable;
-                option.text = variable;
+                option.textContent = variable.replace(/_/g, ' ').toUpperCase();
                 variableSelect.appendChild(option);
             });
             
             // Handle variable selection
             variableSelect.addEventListener('change', function() {
-                var selectedVar = this.value;
+                var selectedVar = variableSelect.value;
                 if (!selectedVar) {
                     variableDetails.style.display = 'none';
                     return;
@@ -465,40 +646,42 @@ def generate_interactive_dashboard(summary_df, detailed_dfs, config=None):
                 variableDetails.style.display = 'block';
                 
                 // Load the detailed visualizations for this variable
-                // This would be replaced with actual paths to the generated files
-                var basePath = './'; // Adjust as needed
-                
+                var basePath = './'; // Relative to dashboard.html
+
                 // Load heatmap
-                fetch(basePath + selectedVar + '_demographic_heatmap.html')
-                    .then(response => response.text())
-                    .then(html => {
-                        var parser = new DOMParser();
-                        var doc = parser.parseFromString(html, 'text/html');
-                        var plotlyDiv = doc.getElementById('plotly');
-                        var plotlyData = JSON.parse(plotlyDiv.getAttribute('data-plotly'));
-                        Plotly.newPlot(heatmapDiv, plotlyData.data, plotlyData.layout);
+                fetch(basePath + selectedVar + '/' + selectedVar + '_demographic_heatmap.html')
+                    .then(response => {
+                        if (!response.ok) throw new Error('Network response was not ok for heatmap: ' + response.statusText);
+                        return response.text();
+                    })
+                    .then(html => renderFetchedPlot(heatmapDiv, html))
+                    .catch(error => {
+                        console.error('Error fetching heatmap HTML:', error);
+                        heatmapDiv.textContent = 'Failed to load heatmap. Check console for details.';
                     });
                 
                 // Load age comparison
-                fetch(basePath + selectedVar + '_age_comparison.html')
-                    .then(response => response.text())
-                    .then(html => {
-                        var parser = new DOMParser();
-                        var doc = parser.parseFromString(html, 'text/html');
-                        var plotlyDiv = doc.getElementById('plotly');
-                        var plotlyData = JSON.parse(plotlyDiv.getAttribute('data-plotly'));
-                        Plotly.newPlot(ageCompDiv, plotlyData.data, plotlyData.layout);
+                fetch(basePath + selectedVar + '/' + selectedVar + '_age_comparison.html')
+                    .then(response => {
+                        if (!response.ok) throw new Error('Network response was not ok for age comparison: ' + response.statusText);
+                        return response.text();
+                    })
+                    .then(html => renderFetchedPlot(ageCompDiv, html))
+                    .catch(error => {
+                        console.error('Error fetching age comparison HTML:', error);
+                        ageCompDiv.textContent = 'Failed to load age comparison plot. Check console for details.';
                     });
                 
                 // Load age difference
-                fetch(basePath + selectedVar + '_age_difference.html')
-                    .then(response => response.text())
-                    .then(html => {
-                        var parser = new DOMParser();
-                        var doc = parser.parseFromString(html, 'text/html');
-                        var plotlyDiv = doc.getElementById('plotly');
-                        var plotlyData = JSON.parse(plotlyDiv.getAttribute('data-plotly'));
-                        Plotly.newPlot(ageDiffDiv, plotlyData.data, plotlyData.layout);
+                fetch(basePath + selectedVar + '/' + selectedVar + '_age_difference.html')
+                    .then(response => {
+                        if (!response.ok) throw new Error('Network response was not ok for age difference: ' + response.statusText);
+                        return response.text();
+                    })
+                    .then(html => renderFetchedPlot(ageDiffDiv, html))
+                    .catch(error => {
+                        console.error('Error fetching age difference HTML:', error);
+                        ageDiffDiv.textContent = 'Failed to load age difference plot. Check console for details.';
                     });
             });
         </script>
@@ -515,3 +698,161 @@ def generate_interactive_dashboard(summary_df, detailed_dfs, config=None):
         visualize_detailed_interactive(df, var_name, config)
     
     return dashboard_path
+
+def create_demographic_contribution_chart(summary_df, detailed_df, variable_name, config=None):
+    """
+    Create an interactive chart showing demographic contributions to the change in a variable.
+    
+    Parameters:
+    -----------
+    summary_df : pandas.DataFrame
+        DataFrame containing the summary results
+    detailed_df : pandas.DataFrame
+        DataFrame containing detailed results for the variable
+    variable_name : str
+        Name of the variable to analyze
+    config : dict
+        Configuration dictionary with visualization settings
+        
+    Returns:
+    --------
+    plotly.graph_objects.Figure
+        Plotly figure showing demographic contributions
+    """
+    # Load config if not provided
+    if config is None:
+        config = load_config()
+    
+    # Extract visualization settings
+    vis_config = config.get("visualization", {})
+    color_scheme = vis_config.get("color_scheme", "RdBu")
+    
+    # Identify variable type
+    var_type = None
+    if "total_employed_bs" in summary_df.columns:
+        var_type = "employment"
+    elif "total_impact_bs" in summary_df.columns:
+        var_type = "per_capita"
+    elif "total_affected_bs" in summary_df.columns:
+        var_type = "prevalence"
+    
+    # Extract the contribution data
+    contribution_col = variable_name + "_contribution"
+    diff_col = variable_name + "_diff"
+    abs_diff_col = variable_name + "_absolute_diff" if var_type == "prevalence" else None
+    total_diff_col = variable_name + "_total_diff" if var_type == "per_capita" else None
+    
+    # Calculate contribution by age-sex groups
+    if var_type == "employment":
+        group_col = contribution_col
+    elif var_type == "prevalence":
+        group_col = abs_diff_col
+    elif var_type == "per_capita":
+        group_col = total_diff_col
+    else:
+        group_col = diff_col
+      # Calculate demographic contributions
+    contribution_data = detailed_df.groupby(['age', 'sex']).apply(
+        lambda x: pd.Series({
+            'contribution': x[group_col].sum(),
+            'abs_contribution': abs(x[group_col].sum()),
+            'population': x['population'].sum()
+        })
+    ).reset_index()
+    
+    # Calculate % contribution based on the sum of absolute contributions
+    total_abs_contribution = contribution_data['abs_contribution'].sum()
+    if total_abs_contribution > 0:
+        contribution_data['contribution_pct'] = contribution_data['abs_contribution'] / total_abs_contribution * 100
+    else:
+        contribution_data['contribution_pct'] = 0
+    
+    # Sort by absolute contribution
+    contribution_data = contribution_data.sort_values('abs_contribution', ascending=False)
+    
+    # Create a column for the demographic group label
+    contribution_data['group'] = contribution_data.apply(lambda row: f"{row['age']} {row['sex']}", axis=1)
+    
+    # Create the visualization - horizontal bar chart of contributions
+    fig = px.bar(
+        contribution_data,
+        y='group',
+        x='contribution',
+        color='contribution',
+        color_continuous_scale=color_scheme,
+        title=f'Demographic Contributions to Change in {variable_name.replace("_", " ").title()}',
+        labels={'contribution': 'Contribution to Change', 'group': 'Demographic Group'},
+        text=contribution_data['contribution'].apply(lambda x: f"{x:.2f}"),
+        hover_data={
+            'population': True,
+            'contribution_pct': ':.1f%'
+        }
+    )
+    
+    fig.update_layout(
+        font=dict(size=14),
+        hoverlabel=dict(font_size=14),
+        height=700,
+        yaxis={'categoryorder': 'total ascending'}
+    )
+    
+    return fig
+
+def create_demographic_impact_heatmap(detailed_df, variable_name, metric_col, config=None):
+    """
+    Create a heatmap showing the impact of a variable across demographic groups.
+    
+    Parameters:
+    -----------
+    detailed_df : pandas.DataFrame
+        DataFrame containing detailed results for the variable
+    variable_name : str
+        Name of the variable to analyze
+    metric_col : str
+        Column name containing the metric to visualize
+    config : dict
+        Configuration dictionary with visualization settings
+        
+    Returns:
+    --------
+    plotly.graph_objects.Figure
+        Plotly figure showing demographic impact heatmap
+    """
+    # Load config if not provided
+    if config is None:
+        config = load_config()
+    
+    # Extract visualization settings
+    vis_config = config.get("visualization", {})
+    color_scheme = vis_config.get("color_scheme", "RdBu")
+    
+    # Create pivot table for the heatmap
+    pivot_data = detailed_df.pivot_table(
+        values=metric_col,
+        index='age',
+        columns='sex',
+        aggfunc='sum'
+    )
+    
+    # Create the heatmap
+    fig = px.imshow(
+        pivot_data,
+        color_continuous_scale=color_scheme,
+        title=f'{variable_name.replace("_", " ").title()} Impact by Demographic Group',
+        labels={
+            'sex': 'Sex',
+            'age': 'Age Group',
+            'value': variable_name.replace("_", " ").title() + ' Impact'
+        },
+        text_auto='.2f'
+    )
+    
+    fig.update_layout(
+        font=dict(size=14),
+        hoverlabel=dict(font_size=14),
+        height=600,
+        xaxis_title="Sex",
+        yaxis_title="Age Group"
+    )
+    
+    return fig

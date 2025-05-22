@@ -187,9 +187,46 @@ def run_simulation(config=None):
             's2_as': df['s2'] + s2_change,
             's3_as': df['s3'] + s3_change
         }
-        df = pd.concat([df, pd.DataFrame(shock_columns)], axis=1)
-          # Store all results
+        df = pd.concat([df, pd.DataFrame(shock_columns)], axis=1)        # Store all results
         results = []
+          # Define variable types for specialized analysis
+        rate_variables = ["employment"]  # Variables that represent a rate/proportion of the population
+        per_capita_variables = [
+            "absence", "cancer", "diabetes", "hypertension", "mortality", 
+            "heart_disease", "stroke", "colorectal_cancer", "breast_cancer", 
+            "endometrial_cancer", "depression", "anxiety", "public_health_costs"
+        ]  # Variables that represent per capita values
+        prevalence_variables = ["body_fat_prc"]  # Variables that represent prevalence rates
+        average_variables = ["earnings", "life_expectancy"]  # Variables that represent averages
+        
+        # Dictionary to map variables to their user-friendly names for reporting
+        variable_friendly_names = {
+            "employment": "Employment Rate",
+            "absence": "Absence Days",
+            "cancer": "Cancer Prevalence",
+            "diabetes": "Diabetes Prevalence",
+            "hypertension": "Hypertension Prevalence",
+            "mortality": "Mortality Rate",
+            "heart_disease": "Heart Disease Prevalence",
+            "stroke": "Stroke Prevalence",
+            "colorectal_cancer": "Colorectal Cancer Prevalence",
+            "breast_cancer": "Breast Cancer Prevalence",
+            "endometrial_cancer": "Endometrial Cancer Prevalence",
+            "depression": "Depression Prevalence",
+            "anxiety": "Anxiety Prevalence",
+            "public_health_costs": "Public Health Costs",
+            "body_fat_prc": "Body Fat Percentage",
+            "earnings": "Earnings",
+            "life_expectancy": "Life Expectancy"
+        }
+        
+        # Initialize total population-level variables
+        population_totals = {
+            'total_population_bs': df['population'].sum(),
+            'total_population_as': df['population'].sum(),  # Population is constant in this model
+            'working_age_population_bs': df[df['age'].isin(age_groups_20_64)]['population'].sum(),
+            'working_age_population_as': df[df['age'].isin(age_groups_20_64)]['population'].sum(),
+        }
         
         print("Processing baseline variables...")
         # Process each baseline variable
@@ -201,11 +238,28 @@ def run_simulation(config=None):
             var_columns[var + "_denominator"] = df['s1'] + df['s2'] * df[var + "_s_n"] + df['s3'] * df[var + "_s_n"] * df[var + "_w_s"]
             var_columns[var + "_s1"] = df[var] / var_columns[var + "_denominator"]
             var_columns[var + "_s2"] = var_columns[var + "_s1"] * df[var + "_s_n"]
-            var_columns[var + "_s3"] = var_columns[var + "_s2"] * df[var + "_w_s"]
-        
-            # Baseline and alternative scenario value for each demographic group
+            var_columns[var + "_s3"] = var_columns[var + "_s2"] * df[var + "_w_s"]            # Baseline and alternative scenario value for each demographic group
             var_columns[var + "_bs"] = df['s1'] * var_columns[var + "_s1"] + df['s2'] * var_columns[var + "_s2"] + df['s3'] * var_columns[var + "_s3"]
             var_columns[var + "_as"] = df['s1_as'] * var_columns[var + "_s1"] + df['s2_as'] * var_columns[var + "_s2"] + df['s3_as'] * var_columns[var + "_s3"]
+            
+            # For variables representing rates, calculate absolute numbers
+            if var in rate_variables or var in prevalence_variables:
+                var_columns[var + "_absolute_bs"] = var_columns[var + "_bs"] * df['population']
+                var_columns[var + "_absolute_as"] = var_columns[var + "_as"] * df['population']
+                var_columns[var + "_absolute_diff"] = var_columns[var + "_absolute_as"] - var_columns[var + "_absolute_bs"]
+            
+            # For per capita variables, calculate total impact
+            if var in per_capita_variables:
+                var_columns[var + "_total_bs"] = var_columns[var + "_bs"] * df['population']
+                var_columns[var + "_total_as"] = var_columns[var + "_as"] * df['population']
+                var_columns[var + "_total_diff"] = var_columns[var + "_total_as"] - var_columns[var + "_total_bs"]
+            
+            # Add demographic contribution calculation (which groups contribute most to changes)
+            var_columns[var + "_diff"] = var_columns[var + "_as"] - var_columns[var + "_bs"]
+            var_columns[var + "_diff_pct"] = (var_columns[var + "_diff"] / var_columns[var + "_bs"]) * 100
+            
+            # Calculate weighted contribution to total change 
+            var_columns[var + "_contribution"] = var_columns[var + "_diff"] * df['population']
             
             # Add these columns to the dataframe all at once
             df = pd.concat([df, pd.DataFrame(var_columns)], axis=1)
@@ -214,23 +268,481 @@ def run_simulation(config=None):
             try:
                 result_bs = np.average(df[var + '_bs'], weights=df['population'])
                 result_as = np.average(df[var + '_as'], weights=df['population'])
+                
+                # Additional metrics based on variable type
+                result_dict = {
+                    "variable": var,
+                    "result_bs": result_bs,
+                    "result_as": result_as,
+                    "absolute_change": result_as - result_bs,
+                    "relative_change_pct": ((result_as - result_bs) / result_bs * 100) if result_bs != 0 else np.nan
+                }
+                  # Add specialized metrics based on variable type
+                if var in rate_variables:
+                    # For employment: total employed population and employment breakdown
+                    total_employed_bs = df[var + "_absolute_bs"].sum()
+                    total_employed_as = df[var + "_absolute_as"].sum()
+                    employed_change = total_employed_as - total_employed_bs
+                    
+                    # Calculate employment change by demographic group
+                    emp_by_age = df.groupby('age')[var + '_absolute_diff'].sum().reset_index()
+                    emp_by_age.columns = ['age', 'employment_change']
+                    emp_by_age['contribution_pct'] = (emp_by_age['employment_change'] / abs(employed_change) * 100) if employed_change != 0 else 0
+                    
+                    emp_by_sex = df.groupby('sex')[var + '_absolute_diff'].sum().reset_index()
+                    emp_by_sex.columns = ['sex', 'employment_change']
+                    emp_by_sex['contribution_pct'] = (emp_by_sex['employment_change'] / abs(employed_change) * 100) if employed_change != 0 else 0
+                    
+                    # Get the top contributing age-sex groups
+                    group_contributions = df.groupby(['age', 'sex'])[var + '_absolute_diff'].sum().reset_index()
+                    group_contributions.columns = ['age', 'sex', 'employment_change']
+                    top_groups = group_contributions.sort_values('employment_change', key=abs, ascending=False).head(5)
+                    
+                    result_dict.update({
+                        "total_employed_bs": total_employed_bs,
+                        "total_employed_as": total_employed_as,
+                        "employed_change": employed_change,
+                        "employed_change_pct": (employed_change / total_employed_bs * 100) if total_employed_bs != 0 else np.nan,
+                        "employment_by_age": emp_by_age.to_dict('records'),
+                        "employment_by_sex": emp_by_sex.to_dict('records'),
+                        "top_contributing_groups": top_groups.to_dict('records')
+                    })
+                elif var in per_capita_variables:
+                    # For absence, cancer, etc.: total impact across population
+                    total_impact_bs = df[var + "_total_bs"].sum()
+                    total_impact_as = df[var + "_total_as"].sum()
+                    impact_change = total_impact_as - total_impact_bs
+                    
+                    # Calculate impact change by demographic group
+                    impact_by_age = df.groupby('age')[var + '_total_diff'].sum().reset_index()
+                    impact_by_age.columns = ['age', 'impact_change']
+                    impact_by_age['contribution_pct'] = (impact_by_age['impact_change'] / abs(impact_change) * 100) if impact_change != 0 else 0
+                    
+                    impact_by_sex = df.groupby('sex')[var + '_total_diff'].sum().reset_index()
+                    impact_by_sex.columns = ['sex', 'impact_change']
+                    impact_by_sex['contribution_pct'] = (impact_by_sex['impact_change'] / abs(impact_change) * 100) if impact_change != 0 else 0
+                    
+                    # Get the top contributing age-sex groups
+                    group_contributions = df.groupby(['age', 'sex'])[var + '_total_diff'].sum().reset_index()
+                    group_contributions.columns = ['age', 'sex', 'impact_change']
+                    top_groups = group_contributions.sort_values('impact_change', key=abs, ascending=False).head(5)
+                    
+                    result_dict.update({
+                        "total_impact_bs": total_impact_bs,
+                        "total_impact_as": total_impact_as,
+                        "impact_change": impact_change,
+                        "impact_change_pct": (impact_change / total_impact_bs * 100) if total_impact_bs != 0 else np.nan,
+                        "impact_by_age": impact_by_age.to_dict('records'),
+                        "impact_by_sex": impact_by_sex.to_dict('records'),
+                        "top_contributing_groups": top_groups.to_dict('records')
+                    })
+                    
+                    # For absence specifically, calculate working days lost
+                    if var == "absence":
+                        working_pop_bs = df[df['age'].isin(age_groups_20_64)]['population'].sum()
+                        working_days_bs = df[df['age'].isin(age_groups_20_64)][var + "_total_bs"].sum()
+                        working_days_as = df[df['age'].isin(age_groups_20_64)][var + "_total_as"].sum()
+                        working_days_change = working_days_as - working_days_bs
+                        
+                        # Calculate per working-age person metrics
+                        days_per_person_bs = working_days_bs / working_pop_bs if working_pop_bs > 0 else 0
+                        days_per_person_as = working_days_as / working_pop_bs if working_pop_bs > 0 else 0
+                        
+                        # Calculate economic impact if available
+                        daily_cost = 500  # Example daily cost of absence (could be parameterized in the future)
+                        economic_impact_bs = working_days_bs * daily_cost
+                        economic_impact_as = working_days_as * daily_cost
+                        economic_impact_change = economic_impact_as - economic_impact_bs
+                        
+                        result_dict.update({
+                            "working_population": working_pop_bs,
+                            "total_days_lost_bs": working_days_bs,
+                            "total_days_lost_as": working_days_as,
+                            "days_lost_change": working_days_change,
+                            "days_lost_change_pct": (working_days_change / working_days_bs * 100) if working_days_bs != 0 else np.nan,
+                            "days_per_person_bs": days_per_person_bs,
+                            "days_per_person_as": days_per_person_as,
+                            "days_per_person_change": days_per_person_as - days_per_person_bs,
+                            "estimated_economic_impact_bs": economic_impact_bs,
+                            "estimated_economic_impact_as": economic_impact_as,
+                            "economic_impact_change": economic_impact_change
+                        })
+                    
+                    # For public_health_costs, calculate total costs and savings
+                    if var == "public_health_costs":
+                        cost_change = impact_change
+                        cost_savings = abs(cost_change) if cost_change < 0 else 0
+                        additional_costs = cost_change if cost_change > 0 else 0
+                        
+                        # Calculate per capita costs
+                        total_population = df['population'].sum()
+                        per_capita_costs_bs = total_impact_bs / total_population if total_population > 0 else 0
+                        per_capita_costs_as = total_impact_as / total_population if total_population > 0 else 0
+                        per_capita_change = per_capita_costs_as - per_capita_costs_bs
+                        
+                        # Calculate costs by demographic groups
+                        costs_by_age = df.groupby('age')[[var + '_total_bs', var + '_total_as', var + '_total_diff']].sum().reset_index()
+                        costs_by_age.columns = ['age', 'costs_bs', 'costs_as', 'cost_change']
+                        
+                        result_dict.update({
+                            "total_costs_bs": total_impact_bs,
+                            "total_costs_as": total_impact_as,
+                            "cost_change": cost_change,
+                            "cost_change_pct": (cost_change / total_impact_bs * 100) if total_impact_bs != 0 else np.nan,
+                            "cost_savings": cost_savings,
+                            "additional_costs": additional_costs,
+                            "per_capita_costs_bs": per_capita_costs_bs,
+                            "per_capita_costs_as": per_capita_costs_as,
+                            "per_capita_cost_change": per_capita_change,
+                            "costs_by_age": costs_by_age.to_dict('records')
+                        })
+                    
+                    # For health indicators like diabetes, calculate prevalence in different ways
+                    if var in ["diabetes", "hypertension", "cancer", "heart_disease", "stroke", 
+                             "colorectal_cancer", "breast_cancer", "endometrial_cancer", 
+                             "depression", "anxiety"]:
+                        # Calculate total cases
+                        total_cases_bs = total_impact_bs
+                        total_cases_as = total_impact_as
+                        cases_change = impact_change
+                        
+                        # Calculate prevalence rates
+                        total_population = df['population'].sum()
+                        prevalence_bs = total_cases_bs / total_population * 100 if total_population > 0 else 0
+                        prevalence_as = total_cases_as / total_population * 100 if total_population > 0 else 0
+                        prevalence_change = prevalence_as - prevalence_bs
+                        
+                        # Calculate cases by age group
+                        cases_by_age = df.groupby('age')[[var + '_total_bs', var + '_total_as', var + '_total_diff']].sum().reset_index()
+                        cases_by_age.columns = ['age', 'cases_bs', 'cases_as', 'cases_change']
+                        
+                        # Calculate prevalence by sex
+                        prev_by_sex = []
+                        for sex in df['sex'].unique():
+                            sex_pop = df[df['sex'] == sex]['population'].sum()
+                            sex_cases_bs = df[df['sex'] == sex][var + '_total_bs'].sum()
+                            sex_cases_as = df[df['sex'] == sex][var + '_total_as'].sum()
+                            prev_by_sex.append({
+                                'sex': sex,
+                                'population': sex_pop,
+                                'cases_bs': sex_cases_bs,
+                                'cases_as': sex_cases_as,
+                                'prevalence_bs': sex_cases_bs / sex_pop * 100 if sex_pop > 0 else 0,
+                                'prevalence_as': sex_cases_as / sex_pop * 100 if sex_pop > 0 else 0,
+                                'prevalence_change': (sex_cases_as - sex_cases_bs) / sex_pop * 100 if sex_pop > 0 else 0
+                            })
+                        
+                        result_dict.update({
+                            "total_cases_bs": total_cases_bs,
+                            "total_cases_as": total_cases_as,
+                            "cases_change": cases_change,
+                            "cases_change_pct": (cases_change / total_cases_bs * 100) if total_cases_bs != 0 else np.nan,
+                            "prevalence_rate_bs": prevalence_bs,
+                            "prevalence_rate_as": prevalence_as,
+                            "prevalence_rate_change": prevalence_change,
+                            "cases_by_age": cases_by_age.to_dict('records'),
+                            "prevalence_by_sex": prev_by_sex
+                        })
+                elif var in prevalence_variables:
+                    # For body_fat_prc: total affected individuals and more detailed breakdowns
+                    total_affected_bs = df[var + "_absolute_bs"].sum()
+                    total_affected_as = df[var + "_absolute_as"].sum()
+                    affected_change = total_affected_as - total_affected_bs
+                    
+                    # Calculate detailed demographic breakdown
+                    affected_by_age = df.groupby('age')[[var + '_absolute_bs', var + '_absolute_as', var + '_absolute_diff']].sum().reset_index()
+                    affected_by_age.columns = ['age', 'affected_bs', 'affected_as', 'affected_change']
+                    affected_by_age['contribution_pct'] = (affected_by_age['affected_change'] / abs(affected_change) * 100) if affected_change != 0 else 0
+                    
+                    affected_by_sex = df.groupby('sex')[[var + '_absolute_bs', var + '_absolute_as', var + '_absolute_diff']].sum().reset_index()
+                    affected_by_sex.columns = ['sex', 'affected_bs', 'affected_as', 'affected_change']
+                    affected_by_sex['contribution_pct'] = (affected_by_sex['affected_change'] / abs(affected_change) * 100) if affected_change != 0 else 0
+                    
+                    # Calculate prevalence rates within demographic groups
+                    prev_by_age = []
+                    for age in df['age'].unique():
+                        age_pop = df[df['age'] == age]['population'].sum()
+                        age_affected_bs = df[df['age'] == age][var + '_absolute_bs'].sum()
+                        age_affected_as = df[df['age'] == age][var + '_absolute_as'].sum()
+                        prev_by_age.append({
+                            'age': age,
+                            'population': age_pop,
+                            'affected_bs': age_affected_bs,
+                            'affected_as': age_affected_as,
+                            'prevalence_bs': age_affected_bs / age_pop * 100 if age_pop > 0 else 0,
+                            'prevalence_as': age_affected_as / age_pop * 100 if age_pop > 0 else 0,
+                            'prevalence_change': (age_affected_as - age_affected_bs) / age_pop * 100 if age_pop > 0 else 0
+                        })
+                    
+                    prev_by_sex = []
+                    for sex in df['sex'].unique():
+                        sex_pop = df[df['sex'] == sex]['population'].sum()
+                        sex_affected_bs = df[df['sex'] == sex][var + '_absolute_bs'].sum()
+                        sex_affected_as = df[df['sex'] == sex][var + '_absolute_as'].sum()
+                        prev_by_sex.append({
+                            'sex': sex,
+                            'population': sex_pop,
+                            'affected_bs': sex_affected_bs,
+                            'affected_as': sex_affected_as,
+                            'prevalence_bs': sex_affected_bs / sex_pop * 100 if sex_pop > 0 else 0,
+                            'prevalence_as': sex_affected_as / sex_pop * 100 if sex_pop > 0 else 0,
+                            'prevalence_change': (sex_affected_as - sex_affected_bs) / sex_pop * 100 if sex_pop > 0 else 0
+                        })
+                    
+                    # Get the top contributing age-sex groups
+                    group_contributions = df.groupby(['age', 'sex'])[var + '_absolute_diff'].sum().reset_index()
+                    group_contributions.columns = ['age', 'sex', 'affected_change']
+                    top_groups = group_contributions.sort_values('affected_change', key=abs, ascending=False).head(5)
+                    
+                    # Calculate total population metrics
+                    total_population = df['population'].sum()
+                    overall_prevalence_bs = total_affected_bs / total_population * 100 if total_population > 0 else 0
+                    overall_prevalence_as = total_affected_as / total_population * 100 if total_population > 0 else 0
+                    prevalence_change = overall_prevalence_as - overall_prevalence_bs
+                    
+                    # For body fat specifically, calculate distribution changes
+                    distribution_changes = {}
+                    if var == "body_fat_prc":
+                        # Define body fat categories (example thresholds)
+                        categories = [
+                            {'name': 'Underweight', 'min': 0, 'max': 13},
+                            {'name': 'Athletic', 'min': 13, 'max': 17},
+                            {'name': 'Fitness', 'min': 17, 'max': 25},
+                            {'name': 'Acceptable', 'min': 25, 'max': 32},
+                            {'name': 'Overweight', 'min': 32, 'max': float('inf')}
+                        ]
+                        
+                        for category in categories:
+                            # Count people in this category for baseline and alternative
+                            cat_mask_bs = (df[var + '_bs'] >= category['min']) & (df[var + '_bs'] < category['max'])
+                            cat_mask_as = (df[var + '_as'] >= category['min']) & (df[var + '_as'] < category['max'])
+                            
+                            cat_count_bs = (df.loc[cat_mask_bs, 'population']).sum()
+                            cat_count_as = (df.loc[cat_mask_as, 'population']).sum()
+                            
+                            distribution_changes[category['name']] = {
+                                'count_bs': cat_count_bs,
+                                'count_as': cat_count_as,
+                                'count_change': cat_count_as - cat_count_bs,
+                                'pct_bs': cat_count_bs / total_population * 100 if total_population > 0 else 0,
+                                'pct_as': cat_count_as / total_population * 100 if total_population > 0 else 0,
+                                'pct_change': (cat_count_as - cat_count_bs) / total_population * 100 if total_population > 0 else 0
+                            }
+                    
+                    result_dict.update({
+                        "total_affected_bs": total_affected_bs,
+                        "total_affected_as": total_affected_as,
+                        "affected_change": affected_change,
+                        "affected_change_pct": (affected_change / total_affected_bs * 100) if total_affected_bs != 0 else np.nan,
+                        "overall_prevalence_bs": overall_prevalence_bs,
+                        "overall_prevalence_as": overall_prevalence_as,
+                        "prevalence_change": prevalence_change,
+                        "affected_by_age": affected_by_age.to_dict('records'),
+                        "affected_by_sex": affected_by_sex.to_dict('records'),
+                        "prevalence_by_age": prev_by_age,
+                        "prevalence_by_sex": prev_by_sex,
+                        "top_contributing_groups": top_groups.to_dict('records')
+                    })
+                    
+                    # Add distribution changes if available
+                    if distribution_changes:
+                        result_dict["distribution_changes"] = distribution_changes
+                  # Add the results to our collection
+                results.append(result_dict)
+                
+                # Generate a specialized analysis report for each variable type
+                # This includes demographic contribution analysis and detailed impact assessment
+                report_dict = {
+                    "variable": var,
+                    "friendly_name": variable_friendly_names.get(var, var),
+                    "overall_change": {
+                        "relative_change_pct": result_dict.get("relative_change_pct", 0),
+                        "absolute_change": result_dict.get("absolute_change", 0)
+                    },
+                    "top_contributors": result_dict.get("top_contributing_groups", []),
+                    "demographic_impact": {}
+                }
+                
+                # Calculate impact by age groups (aggregate across sexes)
+                age_impact = df.groupby('age')[[var + '_diff', var + '_bs']].apply(
+                    lambda x: pd.Series({
+                        'change': (x[var + '_diff'] * df.loc[x.index, 'population']).sum(),
+                        'baseline': (x[var + '_bs'] * df.loc[x.index, 'population']).sum(),
+                        'population': df.loc[x.index, 'population'].sum()
+                    })
+                ).reset_index()
+                
+                # Calculate impact by sex (aggregate across age groups)
+                sex_impact = df.groupby('sex')[[var + '_diff', var + '_bs']].apply(
+                    lambda x: pd.Series({
+                        'change': (x[var + '_diff'] * df.loc[x.index, 'population']).sum(),
+                        'baseline': (x[var + '_bs'] * df.loc[x.index, 'population']).sum(),
+                        'population': df.loc[x.index, 'population'].sum()
+                    })
+                ).reset_index()
+                
+                # Add demographic breakdowns to the report
+                report_dict["demographic_impact"]["by_age"] = age_impact.to_dict('records')
+                report_dict["demographic_impact"]["by_sex"] = sex_impact.to_dict('records')
+                
+                # Add variable-specific metrics
+                if var in rate_variables:
+                    # Employment metrics
+                    report_dict["employment_metrics"] = {
+                        "total_employed_bs": result_dict.get("total_employed_bs", 0),
+                        "total_employed_as": result_dict.get("total_employed_as", 0),
+                        "net_employment_change": result_dict.get("employed_change", 0),
+                        "employment_change_pct": result_dict.get("employed_change_pct", 0),
+                        "employment_change_by_sex": sex_impact.to_dict('records')
+                    }
+                
+                elif var in per_capita_variables:
+                    # Health metrics, absence, etc.
+                    report_dict["impact_metrics"] = {
+                        "total_impact_bs": result_dict.get("total_impact_bs", 0),
+                        "total_impact_as": result_dict.get("total_impact_as", 0),
+                        "net_impact_change": result_dict.get("impact_change", 0),
+                        "impact_change_pct": result_dict.get("impact_change_pct", 0)
+                    }
+                    
+                    # Special case for absence days
+                    if var == "absence":
+                        working_pop = df[df['age'].isin(age_groups_20_64)]['population'].sum()
+                        report_dict["absence_metrics"] = {
+                            "working_population": working_pop,
+                            "days_lost_per_worker_bs": result_dict.get("total_days_lost_bs", 0) / working_pop if working_pop > 0 else 0,
+                            "days_lost_per_worker_as": result_dict.get("total_days_lost_as", 0) / working_pop if working_pop > 0 else 0,
+                            "total_days_lost_bs": result_dict.get("total_days_lost_bs", 0),
+                            "total_days_lost_as": result_dict.get("total_days_lost_as", 0),
+                            "days_lost_change": result_dict.get("days_lost_change", 0)
+                        }
+                    
+                    # Special case for public health costs
+                    if var == "public_health_costs":
+                        report_dict["cost_metrics"] = {
+                            "total_costs_bs": result_dict.get("total_costs_bs", 0),
+                            "total_costs_as": result_dict.get("total_costs_as", 0),
+                            "cost_savings": result_dict.get("costs_savings", 0),
+                            "additional_costs": result_dict.get("additional_costs", 0),
+                            "cost_change_pct": (result_dict.get("impact_change", 0) / result_dict.get("total_impact_bs", 1) * 100)
+                        }
+                
+                elif var in prevalence_variables:
+                    # Body fat % and other prevalence metrics
+                    report_dict["prevalence_metrics"] = {
+                        "total_affected_bs": result_dict.get("total_affected_bs", 0),
+                        "total_affected_as": result_dict.get("total_affected_as", 0),
+                        "affected_change": result_dict.get("affected_change", 0),
+                        "affected_change_pct": result_dict.get("affected_change_pct", 0),
+                        "prevalence_by_sex": sex_impact.to_dict('records')
+                    }
+                
+                # Save the detailed report to a JSON file
+                report_file = f"{var}_detailed_analysis.json"
+                with open(report_file, 'w') as f:
+                    json.dump(report_dict, f, indent=4)
+                
             except ZeroDivisionError:
                 result_bs = result_as = np.nan
                 print(f"Warning: Zero division error when calculating weighted average for {var}")
-        
-            results.append({
-                "variable": var,
-                "result_bs": result_bs,
-                "result_as": result_as,
-                "absolute_change": result_as - result_bs,
-                "relative_change_pct": ((result_as - result_bs) / result_bs * 100) if result_bs != 0 else np.nan
-            })
+                results.append({
+                    "variable": var,
+                    "result_bs": result_bs,
+                    "result_as": result_as,
+                    "absolute_change": np.nan,
+                    "relative_change_pct": np.nan
+                })
             
             # Show progress
             print_progress(i + 1, len(baseline_vars), prefix='Progress:', suffix='Complete', bar_length=50)
-        
-        # Convert result summary to DataFrame
+          # Convert result summary to DataFrame
         summary_df = pd.DataFrame(results)
+        
+        # Create a more detailed summary for export
+        detailed_summary_rows = []
+        
+        for result in results:
+            var = result.get("variable")
+            
+            # Base row with common metrics
+            base_row = {
+                "Variable": var,
+                "Friendly Name": variable_friendly_names.get(var, var),
+                "Baseline Value": result.get("result_bs"),
+                "Alternative Value": result.get("result_as"),
+                "Absolute Change": result.get("absolute_change"),
+                "Relative Change (%)": result.get("relative_change_pct")
+            }
+            
+            # Add variable-specific metrics
+            if var in rate_variables:
+                # Employment specific metrics
+                base_row.update({
+                    "Total in Baseline": result.get("total_employed_bs"),
+                    "Total in Alternative": result.get("total_employed_as"),
+                    "Total Change": result.get("employed_change"),
+                    "Total Change (%)": result.get("employed_change_pct")
+                })
+            
+            elif var in per_capita_variables:
+                # Health indicators, absence, public health costs
+                base_row.update({
+                    "Total Impact Baseline": result.get("total_impact_bs"),
+                    "Total Impact Alternative": result.get("total_impact_as"),
+                    "Total Impact Change": result.get("impact_change"),
+                    "Total Impact Change (%)": result.get("impact_change_pct")
+                })
+                
+                # Additional metrics for specific variables
+                if var == "absence":
+                    base_row.update({
+                        "Total Days Lost Baseline": result.get("total_days_lost_bs"),
+                        "Total Days Lost Alternative": result.get("total_days_lost_as"),
+                        "Days Lost Change": result.get("days_lost_change"),
+                        "Days Lost Change (%)": result.get("days_lost_change_pct"),
+                        "Economic Impact Baseline": result.get("estimated_economic_impact_bs"),
+                        "Economic Impact Alternative": result.get("estimated_economic_impact_as"),
+                        "Economic Impact Change": result.get("economic_impact_change")
+                    })
+                
+                elif var == "public_health_costs":
+                    base_row.update({
+                        "Total Costs Baseline": result.get("total_costs_bs"),
+                        "Total Costs Alternative": result.get("total_costs_as"),
+                        "Cost Savings": result.get("cost_savings"),
+                        "Additional Costs": result.get("additional_costs"),
+                        "Per Capita Costs Baseline": result.get("per_capita_costs_bs"),
+                        "Per Capita Costs Alternative": result.get("per_capita_costs_as")
+                    })
+                
+                elif var in ["diabetes", "hypertension", "cancer", "heart_disease", "stroke", 
+                           "colorectal_cancer", "breast_cancer", "endometrial_cancer", 
+                           "depression", "anxiety"]:
+                    base_row.update({
+                        "Total Cases Baseline": result.get("total_cases_bs"),
+                        "Total Cases Alternative": result.get("total_cases_as"),
+                        "Cases Change": result.get("cases_change"),
+                        "Prevalence Rate Baseline (%)": result.get("prevalence_rate_bs"),
+                        "Prevalence Rate Alternative (%)": result.get("prevalence_rate_as"),
+                        "Prevalence Rate Change (%)": result.get("prevalence_rate_change")
+                    })
+            
+            elif var in prevalence_variables:
+                # Body fat and other prevalence variables
+                base_row.update({
+                    "Total Affected Baseline": result.get("total_affected_bs"),
+                    "Total Affected Alternative": result.get("total_affected_as"),
+                    "Affected Change": result.get("affected_change"),
+                    "Affected Change (%)": result.get("affected_change_pct"),
+                    "Overall Prevalence Baseline (%)": result.get("overall_prevalence_bs"),
+                    "Overall Prevalence Alternative (%)": result.get("overall_prevalence_as"),
+                    "Prevalence Change (%)": result.get("prevalence_change")
+                })
+            
+            detailed_summary_rows.append(base_row)
+        
+        # Convert to DataFrame
+        detailed_summary_df = pd.DataFrame(detailed_summary_rows)
         
         # Print summary to console
         print("\nSimulation Results Summary:")
@@ -238,7 +750,7 @@ def run_simulation(config=None):
         
         # Save results to Excel files
         print(f"Saving summary results to {output_file}...")
-        summary_df.to_excel(output_file, index=False)
+        detailed_summary_df.to_excel(output_file, index=False)
         
         print(f"Saving detailed results to {detailed_output_file}...")
         # Save the entire dataframe with all calculated columns
@@ -246,7 +758,32 @@ def run_simulation(config=None):
             # Save the summary results
             summary_df.to_excel(writer, sheet_name='Summary', index=False)
             
-            # Save the detailed results
+            # Save the more readable detailed summary
+            detailed_summary_df.to_excel(writer, sheet_name='DetailedSummary', index=False)
+            
+            # Save demographic contribution data
+            demo_contributions = []
+            for result in results:
+                var = result.get("variable")
+                
+                # Get top contributing groups if available
+                if "top_contributing_groups" in result:
+                    for group in result.get("top_contributing_groups", []):
+                        demo_contributions.append({
+                            "Variable": var,
+                            "Age Group": group.get("age"),
+                            "Sex": group.get("sex"),
+                            "Contribution": group.get("employment_change" if var in rate_variables else 
+                                                     "impact_change" if var in per_capita_variables else
+                                                     "affected_change" if var in prevalence_variables else None),
+                            "Contribution (%)": group.get("contribution_pct", 0)
+                        })
+            
+            # Convert to DataFrame and save
+            if demo_contributions:
+                demo_df = pd.DataFrame(demo_contributions)
+                demo_df.to_excel(writer, sheet_name='DemographicContributions', index=False)
+            
             # Select demographic columns and results
             demo_cols = ['year', 'age', 'sex', 'population', 's1', 's2', 's3', 's1_as', 's2_as', 's3_as']
             
