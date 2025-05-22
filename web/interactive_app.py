@@ -10,6 +10,7 @@ import pandas as pd
 import os
 import json
 import sys
+import openpyxl
 
 # Add the parent directory to sys.path to import simulation modules
 parent_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
