@@ -142,9 +142,16 @@ def run_simulation(config=None):
         # Identify the columns that are NOT baseline variables
         non_baseline_cols = {"year", "age", "sex", "s1", "s2", "s3", "population"}
         
-        # Only use baseline variables that also exist in the parameters sheet
+        # Only include these variables in the analysis
+        allowed_vars = [
+            "mortality", "employment", "absence", "cancer", "diabetes", "hypertension", "heart_disease",
+            "public_health_costs", "stroke", "colorectal_cancer", "breast_cancer", "endometrial_cancer",
+            "depression", "anxiety"
+        ]
+
+        # Only use baseline variables that also exist in the parameters sheet and are in allowed_vars
         parameter_vars = parameters_df['variable'].tolist()
-        baseline_vars = [col for col in df.columns if col not in non_baseline_cols and col in parameter_vars]
+        baseline_vars = [col for col in df.columns if col not in non_baseline_cols and col in parameter_vars and col in allowed_vars]
         
         # Apply exclusions from config
         if variables_to_exclude:
@@ -158,7 +165,7 @@ def run_simulation(config=None):
         if missing_vars:
             raise ValueError(f"Missing baseline variables in data_2024 sheet: {missing_vars}")
         
-        # Calculate working-age population (optional: could be used for weighting)
+        # Calculate working-age population (20-64) for absence calculation
         age_groups_20_64 = [
             "20-24", "25-29", "30-34", "35-39", "40-44",
             "45-49", "50-54", "55-59", "60-64"
@@ -475,21 +482,18 @@ def run_simulation(config=None):
                     
                     # For absence specifically, calculate working days lost
                     if var == "absence":
-                        working_pop_bs = df[df['age'].isin(age_groups_20_64)]['population'].sum()
-                        working_days_bs = df[df['age'].isin(age_groups_20_64)][var + "_total_bs"].sum()
-                        working_days_as = df[df['age'].isin(age_groups_20_64)][var + "_total_as"].sum()
+                        # Only calculate absence for working-age population (20-64)
+                        working_age_mask = df["age"].isin(age_groups_20_64)
+                        working_pop_bs = df.loc[working_age_mask, 'population'].sum()
+                        working_days_bs = df.loc[working_age_mask, var + "_total_bs"].sum()
+                        working_days_as = df.loc[working_age_mask, var + "_total_as"].sum()
                         working_days_change = working_days_as - working_days_bs
-                        
-                        # Calculate per working-age person metrics
                         days_per_person_bs = working_days_bs / working_pop_bs if working_pop_bs > 0 else 0
                         days_per_person_as = working_days_as / working_pop_bs if working_pop_bs > 0 else 0
-                        
-                        # Calculate economic impact if available
                         daily_cost = 500  # Example daily cost of absence (could be parameterized in the future)
                         economic_impact_bs = working_days_bs * daily_cost
                         economic_impact_as = working_days_as * daily_cost
                         economic_impact_change = economic_impact_as - economic_impact_bs
-                        
                         result_dict.update({
                             "working_population": working_pop_bs,
                             "total_days_lost_bs": working_days_bs,
@@ -772,12 +776,6 @@ def run_simulation(config=None):
                         "affected_change_pct": result_dict.get("affected_change_pct", 0),
                         "prevalence_by_sex": sex_impact.to_dict('records')
                     }
-                
-                # Save the detailed report to a JSON file
-                report_file = f"{var}_detailed_analysis.json"
-                with open(report_file, 'w') as f:
-                    json.dump(report_dict, f, indent=4)
-                
             except ZeroDivisionError:
                 result_bs = result_as = np.nan
                 print(f"Warning: Zero division error when calculating weighted average for {var}")
@@ -791,7 +789,7 @@ def run_simulation(config=None):
             
             # Show progress
             print_progress(i + 1, len(baseline_vars), prefix='Progress:', suffix='Complete', bar_length=50)
-          # Convert result summary to DataFrame
+        # Convert result summary to DataFrame
         summary_df = pd.DataFrame(results)
         
         # Create a more detailed summary for export
